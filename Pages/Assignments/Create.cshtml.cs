@@ -19,11 +19,22 @@ public sealed class CreateModel : PageModel
 
     private readonly SqlConnectionFactory _connectionFactory;
     private readonly PersonMatchingService _personMatchingService;
+    private readonly AccessCardGroupService _accessCardGroupService;
+    private readonly OfficeLicenseRuleService _officeLicenseRuleService;
+    private readonly ADGroupRuleService _groupRuleService;
 
-    public CreateModel(SqlConnectionFactory connectionFactory, PersonMatchingService personMatchingService)
+    public CreateModel(
+        SqlConnectionFactory connectionFactory,
+        PersonMatchingService personMatchingService,
+        AccessCardGroupService accessCardGroupService,
+        OfficeLicenseRuleService officeLicenseRuleService,
+        ADGroupRuleService groupRuleService)
     {
         _connectionFactory = connectionFactory;
         _personMatchingService = personMatchingService;
+        _accessCardGroupService = accessCardGroupService;
+        _officeLicenseRuleService = officeLicenseRuleService;
+        _groupRuleService = groupRuleService;
     }
 
     [BindProperty] public long? SelectedPersonId { get; set; }
@@ -39,6 +50,15 @@ public sealed class CreateModel : PageModel
     [BindProperty] public string? Department { get; set; }
     [BindProperty] public string? Title { get; set; }
     [BindProperty] public string? EmployeeType { get; set; }
+    [BindProperty] public string? ComputerType { get; set; }
+    [BindProperty] public bool AccessCard { get; set; }
+    [BindProperty] public List<int> SelectedAccessCardGroupIds { get; set; } = new();
+    [BindProperty] public string? NewOU { get; set; }
+    [BindProperty] public string? StreetAddress { get; set; }
+    [BindProperty] public string? PostalCode { get; set; }
+    [BindProperty] public string? City { get; set; }
+    [BindProperty] public string? Country { get; set; }
+    [BindProperty] public string? OfficeLicense { get; set; }
     [BindProperty, Required] public string StartDateText { get; set; } = DateTime.Today.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
     [BindProperty] public string? EndDateText { get; set; }
 
@@ -48,11 +68,37 @@ public sealed class CreateModel : PageModel
     public List<ManagerOption> Managers { get; } = new();
     public List<EmployeeTypeOption> EmployeeTypes { get; } = new();
     public List<string> Titles { get; } = new();
+    public List<ComputerTypeOption> ComputerTypes { get; } = new();
+    public List<AccessCardGroupService.AccessCardGroupOption> AccessCardGroups { get; set; } = new();
+    public List<OfficeLicenseRuleService.TitleOfficeLicenseRule> TitleOfficeLicenseRules { get; set; } = new();
+    public List<ADGroupRuleService.RecommendedGroup> RecommendedGroups { get; set; } = new();
 
     public async Task OnGetAsync()
     {
         await LoadOptionsAsync();
+        await LoadAccessCardGroupsAsync();
         ManagerSamAccountName ??= ExtractSamAccountName(User.Identity?.Name);
+        RecommendedGroups = await _groupRuleService.GetRecommendedGroupsAsync(BuildGroupRuleContext());
+    }
+
+    private ADGroupRuleService.GroupRuleContext BuildGroupRuleContext(DomainOption? domain = null, ProjectOption? project = null)
+    {
+        return new ADGroupRuleService.GroupRuleContext
+        {
+            Domain = SelectedDomain,
+            Company = project?.Company ?? domain?.Company,
+            Department = Department,
+            Title = Title,
+            EmployeeType = EmployeeType,
+            Office = Office ?? domain?.Office,
+            Country = Country ?? domain?.Country,
+            City = City ?? domain?.City,
+            ComputerType = ComputerType,
+            OfficeLicense = OfficeLicense,
+            ManagerSamAccountName = ManagerSamAccountName,
+            AccessCard = AccessCard,
+            Enabled = true
+        };
     }
 
     public async Task<IActionResult> OnGetProjectsAsync(string? domain)
@@ -197,6 +243,8 @@ ORDER BY {column};";
     public async Task<IActionResult> OnPostAsync()
     {
         await LoadOptionsAsync();
+        await LoadAccessCardGroupsAsync();
+        RecommendedGroups = await _groupRuleService.GetRecommendedGroupsAsync(BuildGroupRuleContext());
         NormalizePostedValues();
 
         if (!TryParseDate(StartDateText, required: true, out var startDate))
@@ -249,6 +297,25 @@ ORDER BY {column};";
                 && !employee.UserPrincipalName.EndsWith("@" + domain!.Domain, StringComparison.OrdinalIgnoreCase);
             var proposedUpn = BuildMailLocalPart(GivenName, Surname) + "@" + domain!.Domain;
             var requestType = employee.ObjectGuid.HasValue ? "UPDATE" : "CREATE";
+            // Only a genuinely new person (no existing AD account) needs a proposed
+            // SamAccountName -- an existing employee already has one, carried via
+            // TargetSamAccountName instead.
+            var newSamAccountName = requestType == "CREATE" ? BuildMailLocalPart(GivenName, Surname) : null;
+
+            // Recomputed server-side from Title, same as NewUser's ApplyOfficeLicenseFromTitleAsync --
+            // never trust whatever the client posted for OfficeLicense.
+            var licenseResult = await _officeLicenseRuleService.ResolveLicenseForTitleAsync(Title);
+            OfficeLicense = licenseResult.HasRule ? licenseResult.LicenseName : null;
+
+            // NOTE: AttributeJson is not free-form app metadata -- Invoke-ADUserChangeQueue.ps1's
+            // Set-AttributeJsonAttributes treats every key in it as a literal AD attribute name
+            // to Set-ADUser, validated against -AllowedAttributeJsonAttributes. Label/Domain are
+            // not real AD attributes, so this must stay null here; MaterializeCompletedAssignment
+            // was fixed to read AssignmentLabel/AssignmentDomain columns directly instead.
+
+            // An account being created only for a temporary/expiring assignment should
+            // expire when the assignment ends; existing employees keep their account as-is.
+            var accountExpirationDate = requestType == "CREATE" ? endDate : null;
 
             await using var cmd = cn.CreateCommand();
             cmd.Transaction = tx;
@@ -256,43 +323,57 @@ ORDER BY {column};";
 INSERT INTO dbo.ADUserChangeQueue
 (
     RequestType, Status, ExecuteAfter, TargetObjectGUID, TargetSamAccountName,
-    NewUserPrincipalName, NewDisplayName, NewGivenName, NewSurname,
-    ManagerSamAccountName, Department, Title, EmployeeType,
-    Company, Office, Mail, PrivateEmail, MobilePhone, RequestedBy,
+    NewSamAccountName, NewUserPrincipalName, NewDisplayName, NewGivenName, NewSurname, NewOU,
+    ManagerSamAccountName, Department, Title, EmployeeType, AccountExpirationDate,
+    Company, StreetAddress, PostalCode, City, Country, Office, Mail,
+    PrivateEmail, MobilePhone, RequestedBy, Enabled, AttributeJson, OfficeLicense,
     EmployeeId, RequestCategory, ProjectId, StartDate, EndDate,
     AssignmentLabel, AssignmentDomain, ProjectNumber, ProjectName,
-    OverlapStatus, OverlapDetails, RequiresIdentityChange
+    OverlapStatus, OverlapDetails, RequiresIdentityChange,
+    ComputerType, AccessCard
 )
 OUTPUT INSERTED.RequestId
 VALUES
 (
     @RequestType, N'Pending', @StartDate, @TargetObjectGuid, @TargetSam,
-    @NewUpn, @DisplayName, @GivenName, @Surname,
-    @Manager, @Department, @Title, @EmployeeType,
-    @Company, @Office, @Mail, @PrivateEmail, @MobilePhone, @RequestedBy,
+    @NewSam, @NewUpn, @DisplayName, @GivenName, @Surname, @NewOU,
+    @Manager, @Department, @Title, @EmployeeType, @AccountExpirationDate,
+    @Company, @StreetAddress, @PostalCode, @City, @Country, @Office, @Mail,
+    @PrivateEmail, @MobilePhone, @RequestedBy, @Enabled, @AttributeJson, @OfficeLicense,
     @EmployeeId, N'NewAssignment', @ProjectId, @StartDate, @EndDate,
     @Label, @Domain, @ProjectNumber, @ProjectName,
-    @OverlapStatus, @OverlapDetails, @RequiresIdentityChange
+    @OverlapStatus, @OverlapDetails, @RequiresIdentityChange,
+    @ComputerType, @AccessCard
 );";
             cmd.Parameters.AddNVarChar("@RequestType", requestType, 20);
             cmd.Parameters.Add(new SqlParameter("@StartDate", System.Data.SqlDbType.Date) { Value = startDate.Value });
             cmd.Parameters.Add(new SqlParameter("@EndDate", System.Data.SqlDbType.Date) { Value = (object?)endDate ?? DBNull.Value });
             cmd.Parameters.Add(new SqlParameter("@TargetObjectGuid", System.Data.SqlDbType.UniqueIdentifier) { Value = (object?)employee.ObjectGuid ?? DBNull.Value });
             cmd.Parameters.AddNVarChar("@TargetSam", employee.SamAccountName, 256);
+            cmd.Parameters.AddNVarChar("@NewSam", newSamAccountName, 256);
             cmd.Parameters.AddNVarChar("@NewUpn", proposedUpn, 320);
             cmd.Parameters.AddNVarChar("@DisplayName", $"{GivenName} {Surname}".Trim(), 300);
             cmd.Parameters.AddNVarChar("@GivenName", GivenName, 200);
             cmd.Parameters.AddNVarChar("@Surname", Surname, 200);
+            cmd.Parameters.AddNVarChar("@NewOU", NewOU ?? domain.OU, 1024);
             cmd.Parameters.AddNVarChar("@Manager", ManagerSamAccountName, 256);
             cmd.Parameters.AddNVarChar("@Department", Department, 300);
             cmd.Parameters.AddNVarChar("@Title", Title, 300);
             cmd.Parameters.AddNVarChar("@EmployeeType", EmployeeType, 100);
+            cmd.Parameters.Add(new SqlParameter("@AccountExpirationDate", System.Data.SqlDbType.DateTime2) { Value = (object?)accountExpirationDate ?? DBNull.Value });
             cmd.Parameters.AddNVarChar("@Company", project?.Company ?? domain.Company, 300);
+            cmd.Parameters.AddNVarChar("@StreetAddress", StreetAddress ?? domain.Street, 300);
+            cmd.Parameters.AddNVarChar("@PostalCode", PostalCode ?? domain.Zipcode, 50);
+            cmd.Parameters.AddNVarChar("@City", City ?? domain.City, 100);
+            cmd.Parameters.AddNVarChar("@Country", Country ?? domain.Country, 100);
             cmd.Parameters.AddNVarChar("@Office", Office ?? domain.Office, 300);
             cmd.Parameters.AddNVarChar("@Mail", proposedUpn, 320);
             cmd.Parameters.AddNVarChar("@PrivateEmail", PrivateEmail, 320);
             cmd.Parameters.AddNVarChar("@MobilePhone", MobilePhone, 100);
             cmd.Parameters.AddNVarChar("@RequestedBy", User.Identity?.Name ?? Environment.UserName, 300);
+            cmd.Parameters.AddBit("@Enabled", true);
+            cmd.Parameters.AddNVarCharMax("@AttributeJson", null);
+            cmd.Parameters.AddNVarChar("@OfficeLicense", OfficeLicense, 100);
             cmd.Parameters.Add(new SqlParameter("@EmployeeId", System.Data.SqlDbType.BigInt) { Value = employeeId });
             cmd.Parameters.Add(new SqlParameter("@ProjectId", System.Data.SqlDbType.Int) { Value = (object?)project?.Id ?? DBNull.Value });
             cmd.Parameters.AddNVarChar("@Label", domain.Label, 300);
@@ -302,10 +383,23 @@ VALUES
             cmd.Parameters.AddNVarChar("@OverlapStatus", overlapStatus, 30);
             cmd.Parameters.AddNVarCharMax("@OverlapDetails", overlaps.Count == 0 ? null : JsonSerializer.Serialize(overlaps));
             cmd.Parameters.AddBit("@RequiresIdentityChange", identityChange);
+            cmd.Parameters.AddNVarChar("@ComputerType", ComputerType, 100);
+            cmd.Parameters.AddBit("@AccessCard", AccessCard);
             var requestId = Convert.ToInt64(await cmd.ExecuteScalarAsync(HttpContext.RequestAborted));
 
+            var changedBy = User.Identity?.Name ?? Environment.UserName;
+            await _accessCardGroupService.ReplaceSelectionsAsync(
+                cn, requestId, AccessCard, SelectedAccessCardGroupIds, User, Office ?? domain.Office, changedBy, tx);
+
+            // Recomputed from the final submitted/resolved values (not whatever was shown on
+            // the form), same as NewUser.cshtml.cs -- never trust client-side state for which
+            // AD groups get queued.
+            var finalGroupContext = BuildGroupRuleContext(domain, project);
+            var recommendedGroups = await _groupRuleService.GetRecommendedGroupsAsync(cn, finalGroupContext, tx);
+            await _groupRuleService.ReplaceRuleGeneratedQueueGroupsAsync(cn, requestId, recommendedGroups, changedBy, tx);
+
             await tx.CommitAsync(HttpContext.RequestAborted);
-            return RedirectToPage("/Approvals", new { requestId });
+            return RedirectToPage("/Requests/Approvals", new { requestId });
         }
         catch (Exception ex)
         {
@@ -322,11 +416,13 @@ VALUES
         Managers.Clear();
         EmployeeTypes.Clear();
         Titles.Clear();
+        ComputerTypes.Clear();
 
         await using var cn = await _connectionFactory.OpenAsync(HttpContext.RequestAborted);
         await using var cmd = cn.CreateCommand();
         cmd.CommandText = @"
-SELECT [domain], ISNULL(NULLIF(Label, N''), [domain]), ISNULL(company, N''), ISNULL(Office, N'')
+SELECT [domain], ISNULL(NULLIF(Label, N''), [domain]), ISNULL(company, N''), ISNULL(Office, N''),
+       ISNULL(OU, N''), ISNULL(Street, N''), ISNULL(Zipcode, N''), ISNULL(City, N''), ISNULL(Country, N'')
 FROM dbo.domains
 ORDER BY ISNULL(NULLIF(Label, N''), [domain]);
 
@@ -365,12 +461,21 @@ ORDER BY employeetype;
 SELECT Title
 FROM dbo.Titles
 WHERE ISNULL(IsActive, 1) = 1
-ORDER BY Title;";
+ORDER BY Title;
+
+SELECT
+    ComputerType,
+    ISNULL([Domain], N'')
+FROM dbo.ComputerTypes
+WHERE IsActive = 1
+ORDER BY ComputerType;";
         cmd.Parameters.AddNVarChar("@SelectedDomain", SelectedDomain ?? string.Empty, 320);
 
         await using var reader = await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
         while (await reader.ReadAsync(HttpContext.RequestAborted))
-            Domains.Add(new DomainOption(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            Domains.Add(new DomainOption(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                reader.GetString(4), reader.GetString(5), reader.GetString(6), reader.GetString(7), reader.GetString(8)));
 
         await reader.NextResultAsync(HttpContext.RequestAborted);
         while (await reader.ReadAsync(HttpContext.RequestAborted))
@@ -387,6 +492,25 @@ ORDER BY Title;";
         await reader.NextResultAsync(HttpContext.RequestAborted);
         while (await reader.ReadAsync(HttpContext.RequestAborted))
             Titles.Add(reader.GetString(0));
+
+        await reader.NextResultAsync(HttpContext.RequestAborted);
+        while (await reader.ReadAsync(HttpContext.RequestAborted))
+            ComputerTypes.Add(new ComputerTypeOption(reader.GetString(0), reader.GetString(1)));
+
+        await reader.DisposeAsync();
+        TitleOfficeLicenseRules = await _officeLicenseRuleService.LoadActiveTitleRulesAsync(cn);
+    }
+
+    private async Task LoadAccessCardGroupsAsync()
+    {
+        AccessCardGroups = await _accessCardGroupService.GetAvailableGroupsAsync(User, Office);
+    }
+
+    public string? GetConfiguredOfficeLicenseForTitle(string? title)
+    {
+        return TitleOfficeLicenseRules
+            .FirstOrDefault(rule => string.Equals(rule.Title?.Trim(), title?.Trim(), StringComparison.OrdinalIgnoreCase))
+            ?.LicenseName;
     }
 
     private async Task<long> ResolveEmployeeAsync(SqlConnection cn, SqlTransaction tx)
@@ -410,9 +534,42 @@ ORDER BY Title;";
             Surname = archive.Surname;
             PrivateEmail ??= archive.PrivateEmail;
             MobilePhone ??= archive.MobilePhone;
+
+            // The Archive candidate (from ADUserChangeQueue history) may already correspond
+            // to an existing Employees row -- e.g. one created by the Employees backfill from
+            // ADObjects/ADUserChangeQueue. Reuse it rather than inserting a second row for the
+            // same AD identity, which would violate UX_People_CurrentADObjectGuid.
+            var existingEmployeeId = await FindExistingEmployeeAsync(
+                cn, tx, archive.ObjectGuid, archive.SamAccountName, archive.UserPrincipalName);
+            if (existingEmployeeId.HasValue)
+                return existingEmployeeId.Value;
+
             return await InsertEmployeeAsync(cn, tx, archive.ObjectGuid, archive.SamAccountName, archive.UserPrincipalName);
         }
         return await InsertEmployeeAsync(cn, tx, null, null, null);
+    }
+
+    private static async Task<long?> FindExistingEmployeeAsync(
+        SqlConnection cn, SqlTransaction tx, Guid? objectGuid, string? sam, string? upn)
+    {
+        await using var cmd = cn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = @"
+SELECT TOP (1) EmployeeId
+FROM dbo.Employees
+WHERE Status <> N'Merged'
+  AND
+  (
+      (@ObjectGuid IS NOT NULL AND CurrentADObjectGuid = @ObjectGuid)
+   OR (NULLIF(@Sam, N'') IS NOT NULL AND CurrentSamAccountName = @Sam)
+   OR (NULLIF(@Upn, N'') IS NOT NULL AND CurrentUPN = @Upn)
+  )
+ORDER BY CASE WHEN @ObjectGuid IS NOT NULL AND CurrentADObjectGuid = @ObjectGuid THEN 0 ELSE 1 END;";
+        cmd.Parameters.Add(new SqlParameter("@ObjectGuid", System.Data.SqlDbType.UniqueIdentifier) { Value = (object?)objectGuid ?? DBNull.Value });
+        cmd.Parameters.AddNVarChar("@Sam", sam, 256);
+        cmd.Parameters.AddNVarChar("@Upn", upn, 320);
+        var result = await cmd.ExecuteScalarAsync();
+        return result is null or DBNull ? null : Convert.ToInt64(result);
     }
 
     private async Task<long> InsertEmployeeAsync(SqlConnection cn, SqlTransaction tx, Guid? objectGuid, string? sam, string? upn)
@@ -483,10 +640,17 @@ FROM dbo.ADUserChangeQueue WHERE RequestId=@Id;";
     {
         if (string.IsNullOrWhiteSpace(domain)) return null;
         await using var cmd = cn.CreateCommand();
-        cmd.CommandText = @"SELECT TOP 1 [domain], ISNULL(NULLIF(Label,N''),[domain]), ISNULL(company,N''), ISNULL(Office,N'') FROM dbo.domains WHERE LOWER([domain])=LOWER(@Domain);";
+        cmd.CommandText = @"
+SELECT TOP 1 [domain], ISNULL(NULLIF(Label,N''),[domain]), ISNULL(company,N''), ISNULL(Office,N''),
+       ISNULL(OU,N''), ISNULL(Street,N''), ISNULL(Zipcode,N''), ISNULL(City,N''), ISNULL(Country,N'')
+FROM dbo.domains WHERE LOWER([domain])=LOWER(@Domain);";
         cmd.Parameters.AddNVarChar("@Domain", domain, 320);
         await using var r = await cmd.ExecuteReaderAsync();
-        return await r.ReadAsync() ? new DomainOption(r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3)) : null;
+        return await r.ReadAsync()
+            ? new DomainOption(
+                r.GetString(0), r.GetString(1), r.GetString(2), r.GetString(3),
+                r.GetString(4), r.GetString(5), r.GetString(6), r.GetString(7), r.GetString(8))
+            : null;
     }
 
     private static async Task<ProjectOption?> ReadProjectAsync(SqlConnection cn, int id, DomainOption domain)
@@ -559,10 +723,13 @@ while (await r.ReadAsync())
     private static string BuildMailLocalPart(string given, string surname) => PersonMatchingService.NormalizeName(given, surname).Replace(' ', '.');
     private static string ExtractSamAccountName(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Contains('\\') ? value.Split('\\').Last() : value.Contains('@') ? value.Split('@')[0] : value;
 
-    public sealed record DomainOption(string Domain, string Label, string Company, string Office);
+    public sealed record DomainOption(
+        string Domain, string Label, string Company, string Office,
+        string OU, string Street, string Zipcode, string City, string Country);
     public sealed record ProjectOption(int Id, string ProjectNumber, string ProjectName, string Company);
     public sealed record ManagerOption(string SamAccountName, string DisplayName);
     public sealed record EmployeeTypeOption(string Name, bool RequiresEndDate);
+    public sealed record ComputerTypeOption(string ComputerType, string Domain);
     private sealed record EmployeeDetails(string GivenName, string Surname, string? PrivateEmail, string? MobilePhone, string? UserPrincipalName, Guid? ObjectGuid, string? SamAccountName)
     {
         public string DisplayName => $"{GivenName} {Surname}".Trim();

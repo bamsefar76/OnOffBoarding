@@ -20,7 +20,7 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [string]$ConnectionString = 'Server=NOR-WUSRMGM01\FMTUSERDB;Database=UserDatabase;Integrated Security=True;TrustServerCertificate=True;',
+    [string]$ConnectionString = $env:USERCHANGEQUEUE_CONNECTION_STRING,
 
     [Parameter()]
     [ValidateRange(1,100)]
@@ -38,6 +38,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($ConnectionString)) {
+    throw "Supply -ConnectionString or define USERCHANGEQUEUE_CONNECTION_STRING."
+}
 
 $script:TranscriptStarted = $false
 

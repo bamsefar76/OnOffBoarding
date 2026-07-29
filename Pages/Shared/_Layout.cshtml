@@ -15,6 +15,8 @@
         ["nav.home"] = "Home",
         ["nav.requests"] = "Requests",
         ["nav.organisation"] = "Organisation",
+        ["nav.employees"] = "Employees",
+        ["nav.duplicates"] = "Duplicate review",
         ["nav.newUser"] = "New user",
         ["nav.updateUser"] = "Update user",
         ["nav.addAssignment"] = "Add assignment",
@@ -38,7 +40,8 @@
         ["nav.privacy"] = "Privacy",
         ["nav.logout"] = "Sign out",
         ["nav.language"] = "Language",
-        ["nav.signedInAs"] = "Signed in as"
+        ["nav.signedInAs"] = "Signed in as",
+        ["nav.accountMenu"] = "Account menu"
     };
 
     var uiText = await UiTextService.GetTextsAsync(Context, textFallbacks);
@@ -53,6 +56,8 @@
     }
 
     var canOpenOrganisation = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Organisation/Tree");
+    var canOpenDuplicates = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Employees/Duplicates");
+    var canOpenEmployees = canOpenDuplicates;
     var canOpenUserChangeQueue = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/NewUser");
     var canOpenUpdateUser = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/UpdateUser");
     var canOpenAddAssignment = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Assignments/Create");
@@ -140,6 +145,21 @@
                         {
                             <li class="nav-item">
                                 <a class="nav-link text-dark@(ActiveClass("/Organisation/Tree"))" asp-area="" asp-page="/Organisation/Tree">@T("nav.organisation")</a>
+                            </li>
+                        }
+
+                        @if (canOpenEmployees)
+                        {
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle text-dark@(DropdownActiveClass("/Employees/Duplicates"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    @T("nav.employees")
+                                </a>
+                                <ul class="dropdown-menu">
+                                    @if (canOpenDuplicates)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Employees/Duplicates"))" asp-area="" asp-page="/Employees/Duplicates">@T("nav.duplicates")</a></li>
+                                    }
+                                </ul>
                             </li>
                         }
 
@@ -259,14 +279,16 @@
 
                     @if (isAuthenticated)
                     {
-                        <ul class="navbar-nav">
+                        <ul class="navbar-nav align-items-center">
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-page="/MyProfile/Index">@accessScope.DisplayName</a>
+                            </li>
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle text-dark" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                                    @currentUserName
+                                <a class="nav-link dropdown-toggle text-dark" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="@T("nav.accountMenu")">
                                 </a>
                                 <ul class="dropdown-menu dropdown-menu-end">
                                     <li><h6 class="dropdown-header">@T("nav.signedInAs")</h6></li>
-                                    <li><span class="dropdown-item-text text-muted">@currentUserName</span></li>
+                                    <li><span class="dropdown-item-text text-muted">@accessScope.DisplayName</span></li>
                                     <li><hr class="dropdown-divider" /></li>
                                     <li><h6 class="dropdown-header">@T("nav.language")</h6></li>
                                     @foreach (var language in languages)

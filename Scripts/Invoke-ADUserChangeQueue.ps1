@@ -36,7 +36,7 @@
 [CmdletBinding()]
 param(
     [Parameter()]
-    [string]$ConnectionString = "Server=NOR-WUSRMGM01\FMTUSERDB;Database=UserDatabase;Integrated Security=True;TrustServerCertificate=True;",
+    [string]$ConnectionString = $env:USERCHANGEQUEUE_CONNECTION_STRING,
 
     [Parameter()]
     [int]$BatchSize = 10,
@@ -167,6 +167,10 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+if ([string]::IsNullOrWhiteSpace($ConnectionString)) {
+    throw "Supply -ConnectionString or define USERCHANGEQUEUE_CONNECTION_STRING."
+}
 
 # Resolve a stable script directory without relying on $PSScriptRoot in a
 # parameter default expression. Some Windows PowerShell hosts evaluate those

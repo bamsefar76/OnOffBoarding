@@ -25,6 +25,12 @@ public sealed class TranslationsModel : PageModel
     [BindProperty(SupportsGet = true)]
     public bool ShowInactive { get; set; }
 
+    [BindProperty(SupportsGet = true)]
+    public string? Language { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public bool OnlyMissingForLanguage { get; set; }
+
     [BindProperty]
     public string? NewKey { get; set; }
 
@@ -51,6 +57,12 @@ public sealed class TranslationsModel : PageModel
     public string? ErrorMessage { get; set; }
 
     public List<LanguageRow> Languages { get; } = new();
+
+    // The view renders one column per entry here (not per entry in Languages directly),
+    // so that selecting a Language filter restricts which column(s) are shown.
+    public List<LanguageRow> DisplayLanguages => string.IsNullOrWhiteSpace(Language)
+        ? Languages
+        : Languages.Where(l => string.Equals(l.LanguageCode, Language, StringComparison.OrdinalIgnoreCase)).ToList();
 
     public List<string> Categories { get; } = new();
 
@@ -86,13 +98,32 @@ public sealed class TranslationsModel : PageModel
         await using var cn = await OpenConnectionAsync();
         await EnsureCategoryColumnAsync(cn);
 
-        foreach (var language in await LoadLanguagesAsync(cn))
+        await using var tx = (SqlTransaction)await cn.BeginTransactionAsync();
+        try
         {
-            var textValue = string.Equals(language.LanguageCode, "en", StringComparison.OrdinalIgnoreCase)
-                ? englishText
-                : "";
+            foreach (var language in await LoadLanguagesAsync(cn))
+            {
+                var textValue = string.Equals(language.LanguageCode, "en", StringComparison.OrdinalIgnoreCase)
+                    ? englishText
+                    : "";
 
-            await UpsertTextAsync(cn, key, language.LanguageCode, textValue, category, true, "Translations page");
+                await UpsertTextAsync(cn, key, language.LanguageCode, textValue, category, true, "Translations page", tx);
+            }
+
+            await tx.CommitAsync();
+        }
+        catch
+        {
+            try
+            {
+                await tx.RollbackAsync();
+            }
+            catch
+            {
+                // Ignore rollback errors and rethrow the original exception.
+            }
+
+            throw;
         }
 
         return RedirectToPage(new { Search = key, Category = category, ShowInactive = true });
@@ -142,6 +173,7 @@ WHEN NOT MATCHED THEN
         return RedirectToPage(new { Search, Category, ShowInactive = true });
     }
 
+    [Microsoft.AspNetCore.Mvc.RequestFormLimits(ValueCountLimit = 20000)]
     public async Task<IActionResult> OnPostSaveVisibleAsync()
     {
         var form = Request.Form;
@@ -151,32 +183,68 @@ WHEN NOT MATCHED THEN
         await using var cn = await OpenConnectionAsync();
         await EnsureCategoryColumnAsync(cn);
 
-        for (var i = 0; i < rowCount; i++)
+        await using var tx = (SqlTransaction)await cn.BeginTransactionAsync();
+        try
         {
-            var key = form[$"RowKey_{i}"].ToString();
-            if (string.IsNullOrWhiteSpace(key))
+            for (var i = 0; i < rowCount; i++)
             {
-                continue;
+                var key = form[$"RowKey_{i}"].ToString();
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                var category = form[$"Category_{i}"].ToString();
+                var active = string.Equals(form[$"Active_{i}"].ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+                foreach (var language in languages)
+                {
+                    var formKey = $"Value_{i}_{language.LanguageCode}";
+                    if (!form.ContainsKey(formKey))
+                    {
+                        // This language's column wasn't rendered (e.g. the Language filter
+                        // restricted the view to a different language) -- leave its existing
+                        // value untouched rather than overwriting it with a blank.
+                        continue;
+                    }
+
+                    var value = form[formKey].ToString();
+                    await UpsertTextAsync(
+                        cn,
+                        key.Trim(),
+                        language.LanguageCode,
+                        value,
+                        string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
+                        active,
+                        User.Identity?.Name ?? "Translations page",
+                        tx);
+                }
             }
 
-            var category = form[$"Category_{i}"].ToString();
-            var active = string.Equals(form[$"Active_{i}"].ToString(), "true", StringComparison.OrdinalIgnoreCase);
-
-            foreach (var language in languages)
+            await tx.CommitAsync();
+        }
+        catch
+        {
+            try
             {
-                var value = form[$"Value_{i}_{language.LanguageCode}"].ToString();
-                await UpsertTextAsync(
-                    cn,
-                    key.Trim(),
-                    language.LanguageCode,
-                    value,
-                    string.IsNullOrWhiteSpace(category) ? null : category.Trim(),
-                    active,
-                    User.Identity?.Name ?? "Translations page");
+                await tx.RollbackAsync();
             }
+            catch
+            {
+                // Ignore rollback errors and rethrow the original exception.
+            }
+
+            throw;
         }
 
-        return RedirectToPage(new { Search = form["Search"].ToString(), Category = form["Category"].ToString(), ShowInactive = string.Equals(form["ShowInactive"].ToString(), "True", StringComparison.OrdinalIgnoreCase) });
+        return RedirectToPage(new
+        {
+            Search = form["Search"].ToString(),
+            Category = form["Category"].ToString(),
+            ShowInactive = string.Equals(form["ShowInactive"].ToString(), "True", StringComparison.OrdinalIgnoreCase),
+            Language = form["Language"].ToString(),
+            OnlyMissingForLanguage = string.Equals(form["OnlyMissingForLanguage"].ToString(), "True", StringComparison.OrdinalIgnoreCase)
+        });
     }
 
     private async Task LoadPageAsync()
@@ -188,7 +256,17 @@ WHEN NOT MATCHED THEN
 
         Languages.AddRange(await LoadLanguagesAsync(cn));
         Categories.AddRange(await LoadCategoriesAsync(cn));
-        Rows.AddRange(await LoadRowsAsync(cn));
+
+        var rows = await LoadRowsAsync(cn);
+
+        if (OnlyMissingForLanguage && !string.IsNullOrWhiteSpace(Language))
+        {
+            rows = rows
+                .Where(row => !row.Values.TryGetValue(Language, out var value) || string.IsNullOrWhiteSpace(value))
+                .ToList();
+        }
+
+        Rows.AddRange(rows);
     }
 
     private async Task<SqlConnection> OpenConnectionAsync()
@@ -308,12 +386,18 @@ ORDER BY UiTextKey, LanguageCode;
         string textValue,
         string? category,
         bool active,
-        string updatedBy)
+        string updatedBy,
+        SqlTransaction? transaction = null)
     {
         await using var cmd = cn.CreateCommand();
+        cmd.Transaction = transaction;
         cmd.Parameters.AddNVarChar("@UiTextKey", key, 200);
         cmd.Parameters.AddNVarChar("@LanguageCode", languageCode, 10);
-        cmd.Parameters.AddNVarCharMax("@TextValue", textValue);
+        // UiTexts.TextValue is NOT NULL -- unlike Category below, a blank value here must be
+        // stored as an empty string, never DBNull (AddNVarCharMax converts blank -> DBNull,
+        // which is correct for optional columns but wrong for this one).
+        var textValueParameter = cmd.Parameters.Add("@TextValue", System.Data.SqlDbType.NVarChar, -1);
+        textValueParameter.Value = textValue ?? string.Empty;
         cmd.Parameters.AddNVarChar("@Category", category, 100);
         cmd.Parameters.AddBit("@Active", active);
         cmd.Parameters.AddNVarChar("@UpdatedBy", updatedBy, 300);

@@ -44,7 +44,7 @@ public class IndexModel : PageModel
                 return RedirectToPage("/Requests/Upcoming");
             }
 
-            return RedirectToPage("/TemporaryAccess/Index");
+            return RedirectToPage("/MyProfile/Index");
         }
 
         await using var connection = await _connectionFactory.OpenAsync(HttpContext.RequestAborted);

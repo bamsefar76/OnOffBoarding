@@ -4,74 +4,220 @@
 @inject UiTextService UiTextService
 @{
     ViewData["Title"] = "Temporary access";
-    var fallbacks = new Dictionary<string,string>
+
+    var fallbacks = new Dictionary<string, string>
     {
-        ["ta.title"]="Temporary access", ["ta.intro"]="Add yourself temporarily to approved Active Directory groups.",
-        ["ta.duration"]="Duration", ["ta.days"]="days", ["ta.reason"]="Reason", ["ta.reasonRequired"]="Reason required",
-        ["ta.request"]="Add access", ["ta.renew"]="Renew", ["ta.remove"]="Remove now", ["ta.expires"]="Expires",
-        ["ta.pendingAdd"]="Waiting to be added", ["ta.processingAdd"]="Adding", ["ta.active"]="Active",
-        ["ta.pendingRemove"]="Waiting to be removed", ["ta.processingRemove"]="Removing", ["ta.none"]="No temporary access groups are available.",
-        ["ta.history"]="Recent requests", ["ta.requested"]="Requested", ["ta.status"]="Status", ["ta.error"]="Last error"
+        ["ta.title"] = "Temporary access",
+        ["ta.intro"] = "Request temporary access to an approved resource.",
+        ["ta.current"] = "Current access",
+        ["ta.requestAccess"] = "Request access",
+        ["ta.resource"] = "Resource",
+        ["ta.choose"] = "Choose a resource",
+        ["ta.duration"] = "Duration",
+        ["ta.days"] = "days",
+        ["ta.reason"] = "Reason",
+        ["ta.reasonRequired"] = "A reason is required for this resource.",
+        ["ta.request"] = "Request access",
+        ["ta.renew"] = "Renew",
+        ["ta.remove"] = "Remove",
+        ["ta.expires"] = "Active until",
+        ["ta.pendingAdd"] = "Waiting to be added",
+        ["ta.processingAdd"] = "Adding",
+        ["ta.active"] = "Active",
+        ["ta.pendingRemove"] = "Waiting to be removed",
+        ["ta.processingRemove"] = "Removing",
+        ["ta.noneCurrent"] = "You do not currently have temporary access.",
+        ["ta.noneAvailable"] = "No additional temporary access resources are available."
     };
+
     var text = await UiTextService.GetTextsAsync(HttpContext, fallbacks);
     string T(string key) => text.T(key, fallbacks[key]);
+
+    var currentGroups = Model.Groups
+        .Where(g => g.MembershipId.HasValue)
+        .ToList();
+
+    var availableGroups = Model.Groups
+        .Where(g => !g.MembershipId.HasValue)
+        .ToList();
 }
+
 <h1>@T("ta.title")</h1>
 <p class="text-muted">@T("ta.intro")</p>
-@if (!string.IsNullOrWhiteSpace(Model.StatusMessage)) { <div class="alert alert-success">@Model.StatusMessage</div> }
-@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage)) { <div class="alert alert-danger">@Model.ErrorMessage</div> }
 
-@if (Model.Groups.Count == 0)
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
 {
-    <div class="alert alert-secondary">@T("ta.none")</div>
+    <div class="alert alert-success">@Model.StatusMessage</div>
 }
-else
+
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
 {
-    <div class="row g-3">
-    @foreach (var group in Model.Groups)
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<section class="mb-5">
+    <h2 class="h4">@T("ta.current")</h2>
+
+    @if (currentGroups.Count == 0)
     {
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h5 class="card-title">@group.DisplayName</h5>
-                    @if (!string.IsNullOrWhiteSpace(group.Description)) { <p class="card-text">@group.Description</p> }
-                    <p class="small text-muted mb-3">@T("ta.duration"): @group.DurationDays @T("ta.days")</p>
-                    @if (group.MembershipId is null)
+        <div class="alert alert-secondary">@T("ta.noneCurrent")</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Resource</th>
+                        <th>Status</th>
+                        <th>@T("ta.expires")</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var group in currentGroups)
+                {
+                    var statusText = group.Status switch
                     {
-                        <form method="post" asp-page-handler="Request">
-                            <input type="hidden" name="GroupId" value="@group.Id" />
-                            <label class="form-label">@T("ta.reason") @if(group.RequireReason){<span class="text-danger">*</span>}</label>
-                            <textarea name="Reason" class="form-control mb-2" rows="2" required="@(group.RequireReason ? "required" : null)"></textarea>
-                            <button class="btn btn-primary" type="submit">@T("ta.request")</button>
-                        </form>
-                    }
-                    else
-                    {
-                        var statusText = group.Status switch { "PendingAdd" => T("ta.pendingAdd"), "ProcessingAdd" => T("ta.processingAdd"), "Active" => T("ta.active"), "PendingRemove" => T("ta.pendingRemove"), "ProcessingRemove" => T("ta.processingRemove"), _ => group.Status };
-                        <div class="alert alert-info py-2"><strong>@statusText</strong>@if(group.ExpiresAt.HasValue){<span> — @T("ta.expires"): @group.ExpiresAt.Value.ToString("g")</span>}</div>
-                        @if (!string.IsNullOrWhiteSpace(group.LastError)) { <div class="alert alert-danger py-2">@group.LastError</div> }
-                        <div class="d-flex gap-2">
-                        @if (group.Status == "Active" && group.AllowRenewal)
-                        {
-                            <form method="post" asp-page-handler="Renew"><input type="hidden" name="id" value="@group.MembershipId" /><button class="btn btn-outline-primary" type="submit">@T("ta.renew")</button></form>
-                        }
-                        @if (group.Status is "PendingAdd" or "Active")
-                        {
-                            <form method="post" asp-page-handler="Remove"><input type="hidden" name="id" value="@group.MembershipId" /><button class="btn btn-outline-danger" type="submit">@T("ta.remove")</button></form>
-                        }
-                        </div>
-                    }
-                </div>
-            </div>
+                        "PendingAdd" => T("ta.pendingAdd"),
+                        "ProcessingAdd" => T("ta.processingAdd"),
+                        "Active" => T("ta.active"),
+                        "PendingRemove" => T("ta.pendingRemove"),
+                        "ProcessingRemove" => T("ta.processingRemove"),
+                        _ => group.Status ?? ""
+                    };
+
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">@group.DisplayName</div>
+                            @if (!string.IsNullOrWhiteSpace(group.Description))
+                            {
+                                <div class="small text-muted">@group.Description</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(group.LastError))
+                            {
+                                <div class="small text-danger mt-1">@group.LastError</div>
+                            }
+                        </td>
+                        <td>@statusText</td>
+                        <td>
+                            @if (group.ExpiresAt.HasValue)
+                            {
+                                @group.ExpiresAt.Value.ToString("dd.MM.yyyy HH:mm")
+                            }
+                        </td>
+                        <td class="text-end">
+                            <div class="d-inline-flex gap-2">
+                                @if (group.Status == "Active" && group.AllowRenewal)
+                                {
+                                    <form method="post" asp-page-handler="Renew">
+                                        <input type="hidden" name="id" value="@group.MembershipId" />
+                                        <button class="btn btn-sm btn-outline-primary" type="submit">
+                                            @T("ta.renew")
+                                        </button>
+                                    </form>
+                                }
+
+                                @if (group.Status is "PendingAdd" or "Active")
+                                {
+                                    <form method="post" asp-page-handler="Remove">
+                                        <input type="hidden" name="id" value="@group.MembershipId" />
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">
+                                            @T("ta.remove")
+                                        </button>
+                                    </form>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
         </div>
     }
-    </div>
-}
+</section>
 
-@if (Model.History.Count > 0)
-{
-    <h2 class="h4 mt-5">@T("ta.history")</h2>
-    <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Group</th><th>@T("ta.status")</th><th>@T("ta.requested")</th><th>@T("ta.expires")</th><th>@T("ta.error")</th></tr></thead><tbody>
-    @foreach(var item in Model.History){<tr><td>@item.GroupName</td><td>@item.Status</td><td>@item.RequestedAt.ToString("g")</td><td>@item.ExpiresAt.ToString("g")</td><td class="text-danger">@item.LastError</td></tr>}
-    </tbody></table></div>
+<section>
+    <h2 class="h4">@T("ta.requestAccess")</h2>
+
+    @if (availableGroups.Count == 0)
+    {
+        <div class="alert alert-secondary">@T("ta.noneAvailable")</div>
+    }
+    else
+    {
+        <form method="post" asp-page-handler="Request" class="card">
+            <div class="card-body">
+                <div class="mb-3">
+                    <label asp-for="GroupId" class="form-label">@T("ta.resource")</label>
+                    <select asp-for="GroupId" class="form-select" id="temporaryAccessGroup" required>
+                        <option value="">@T("ta.choose")</option>
+                        @foreach (var group in availableGroups)
+                        {
+                            <option value="@group.Id"
+                                    data-description="@group.Description"
+                                    data-duration="@group.DurationDays"
+                                    data-require-reason="@group.RequireReason.ToString().ToLowerInvariant()">
+                                @group.DisplayName
+                            </option>
+                        }
+                    </select>
+                    <div id="temporaryAccessDescription" class="form-text"></div>
+                    <div id="temporaryAccessDuration" class="form-text"></div>
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="Reason" class="form-label">@T("ta.reason")</label>
+                    <textarea asp-for="Reason"
+                              class="form-control"
+                              rows="3"
+                              id="temporaryAccessReason"></textarea>
+                    <div id="temporaryAccessReasonRequired"
+                         class="form-text text-danger d-none">
+                        @T("ta.reasonRequired")
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" type="submit">
+                    @T("ta.request")
+                </button>
+            </div>
+        </form>
+    }
+</section>
+
+@section Scripts {
+<script>
+(() => {
+    const select = document.getElementById("temporaryAccessGroup");
+    if (!select) return;
+
+    const description = document.getElementById("temporaryAccessDescription");
+    const duration = document.getElementById("temporaryAccessDuration");
+    const reason = document.getElementById("temporaryAccessReason");
+    const reasonRequired = document.getElementById("temporaryAccessReasonRequired");
+
+    function updateSelection() {
+        const option = select.options[select.selectedIndex];
+        const hasSelection = Boolean(option && option.value);
+
+        description.textContent = hasSelection
+            ? (option.dataset.description || "")
+            : "";
+
+        duration.textContent = hasSelection
+            ? `@T("ta.duration"): ${option.dataset.duration} @T("ta.days")`
+            : "";
+
+        const requiresReason =
+            hasSelection && option.dataset.requireReason === "true";
+
+        reason.required = requiresReason;
+        reasonRequired.classList.toggle("d-none", !requiresReason);
+    }
+
+    select.addEventListener("change", updateSelection);
+    updateSelection();
+})();
+</script>
 }

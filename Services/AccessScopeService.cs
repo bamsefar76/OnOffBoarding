@@ -53,10 +53,12 @@ public sealed class AccessScopeService
 
         var office = await LoadOfficeAsync(connection, samAccountName, cancellationToken);
         var isProjectManager = await IsProjectManagerAsync(connection, samAccountName, cancellationToken);
+        var displayName = await LoadDisplayNameAsync(connection, samAccountName, cancellationToken);
 
         _cachedScope = new UserAccessScope(
             loginName,
             samAccountName,
+            displayName,
             office,
             isIt,
             !isIt && (canCreateUsers || canUpdateUsers) && !string.IsNullOrWhiteSpace(office),
@@ -110,6 +112,35 @@ WHERE SamAccountName = @SamAccountName
 
         var value = await command.ExecuteScalarAsync(cancellationToken);
         return value is null || value is DBNull ? string.Empty : Convert.ToString(value)?.Trim() ?? string.Empty;
+    }
+
+    private static async Task<string> LoadDisplayNameAsync(
+        SqlConnection connection,
+        string samAccountName,
+        CancellationToken cancellationToken)
+    {
+        // Prefer the curated Employees name; fall back to the live AD DisplayName; fall back
+        // to the raw SamAccountName so the UI never ends up with a blank name.
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+SELECT TOP (1)
+    NULLIF(LTRIM(RTRIM(CONCAT(e.CanonicalGivenName, N' ', e.CanonicalSurname))), N'') AS EmployeeName,
+    NULLIF(LTRIM(RTRIM(ad.DisplayName)), N'') AS AdDisplayName
+FROM dbo.ADObjects ad
+LEFT JOIN dbo.Employees e ON e.CurrentADObjectGuid = ad.ObjectGUID AND e.Status <> N'Merged'
+WHERE ad.SamAccountName = @SamAccountName
+  AND ISNULL(ad.IsDeleted, 0) = 0;";
+        command.Parameters.AddNVarChar("@SamAccountName", samAccountName, 256);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (await reader.ReadAsync(cancellationToken))
+        {
+            var employeeName = reader.IsDBNull(0) ? null : reader.GetString(0);
+            var adDisplayName = reader.IsDBNull(1) ? null : reader.GetString(1);
+            return employeeName ?? adDisplayName ?? samAccountName;
+        }
+
+        return samAccountName;
     }
 
     private static async Task<bool> IsProjectManagerAsync(
@@ -187,12 +218,13 @@ WHERE TABLE_SCHEMA = N'dbo'
 public sealed record UserAccessScope(
     string LoginName,
     string SamAccountName,
+    string DisplayName,
     string Office,
     bool IsIT,
     bool IsHR,
     bool IsProjectManager)
 {
-    public static UserAccessScope Empty { get; } = new("", "", "", false, false, false);
+    public static UserAccessScope Empty { get; } = new("", "", "", "", false, false, false);
 
     public bool HasScopedUpcomingAccess => IsIT || IsHR || IsProjectManager;
 }

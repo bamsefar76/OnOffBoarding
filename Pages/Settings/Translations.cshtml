@@ -20,7 +20,7 @@
 <div class="card mb-3">
     <div class="card-body">
         <form method="get" class="row g-2 align-items-end">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label" for="Search">@Model.T("translations.search", "Search")</label>
                 <input class="form-control" id="Search" name="Search" value="@Model.Search" />
             </div>
@@ -34,11 +34,25 @@
                     }
                 </select>
             </div>
-            <div class="col-md-3 form-check mt-4 pt-3">
+            <div class="col-md-2">
+                <label class="form-label" for="Language">@Model.T("translations.language", "Language")</label>
+                <select class="form-select" id="Language" name="Language">
+                    <option value="">All</option>
+                    @foreach (var language in Model.Languages)
+                    {
+                        <option value="@language.LanguageCode" selected="@(string.Equals(Model.Language, language.LanguageCode, StringComparison.OrdinalIgnoreCase))">@language.DisplayName</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-2 form-check mt-4 pt-3">
+                <input class="form-check-input" type="checkbox" id="OnlyMissingForLanguage" name="OnlyMissingForLanguage" value="true" checked="@Model.OnlyMissingForLanguage" />
+                <label class="form-check-label" for="OnlyMissingForLanguage">@Model.T("translations.onlyMissing", "Only missing")</label>
+            </div>
+            <div class="col-md-1 form-check mt-4 pt-3">
                 <input class="form-check-input" type="checkbox" id="ShowInactive" name="ShowInactive" value="true" checked="@Model.ShowInactive" />
                 <label class="form-check-label" for="ShowInactive">@Model.T("translations.showInactive", "Show inactive")</label>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
                 <button type="submit" class="btn btn-primary w-100">@Model.T("translations.applyFilters", "Apply filters")</button>
             </div>
         </form>
@@ -104,6 +118,8 @@
     <input type="hidden" name="Search" value="@Model.Search" />
     <input type="hidden" name="Category" value="@Model.Category" />
     <input type="hidden" name="ShowInactive" value="@Model.ShowInactive" />
+    <input type="hidden" name="Language" value="@Model.Language" />
+    <input type="hidden" name="OnlyMissingForLanguage" value="@Model.OnlyMissingForLanguage" />
     <input type="hidden" name="RowCount" value="@Model.Rows.Count" />
 
     <div class="table-responsive">
@@ -113,7 +129,7 @@
                     <th style="min-width: 260px;">@Model.T("translations.key", "Key")</th>
                     <th style="min-width: 160px;">@Model.T("translations.category", "Category")</th>
                     <th class="text-center">@Model.T("translations.active", "Active")</th>
-                    @foreach (var language in Model.Languages)
+                    @foreach (var language in Model.DisplayLanguages)
                     {
                         <th style="min-width: 260px;">@language.NativeName (@language.LanguageCode)</th>
                     }
@@ -123,7 +139,7 @@
                 @if (Model.Rows.Count == 0)
                 {
                     <tr>
-                        <td colspan="@(3 + Model.Languages.Count)" class="text-muted">@Model.T("translations.noRows", "No translation rows matched the filter.")</td>
+                        <td colspan="@(3 + Model.DisplayLanguages.Count)" class="text-muted">@Model.T("translations.noRows", "No translation rows matched the filter.")</td>
                     </tr>
                 }
                 else
@@ -142,7 +158,7 @@
                             <td class="text-center">
                                 <input class="form-check-input" type="checkbox" name="Active_@i" value="true" checked="@row.Active" />
                             </td>
-                            @foreach (var language in Model.Languages)
+                            @foreach (var language in Model.DisplayLanguages)
                             {
                                 var value = row.Values.TryGetValue(language.LanguageCode, out var text) ? text : "";
                                 <td>

@@ -51,6 +51,8 @@ public class PageAccessService
 
         return normalizedPagePath.Equals("/", StringComparison.OrdinalIgnoreCase)
             || normalizedPagePath.Equals("/Index", StringComparison.OrdinalIgnoreCase)
+            || normalizedPagePath.Equals("/MyProfile", StringComparison.OrdinalIgnoreCase)
+            || normalizedPagePath.Equals("/MyProfile/Index", StringComparison.OrdinalIgnoreCase)
             || normalizedPagePath.Equals("/Privacy", StringComparison.OrdinalIgnoreCase)
             || normalizedPagePath.Equals("/Logout", StringComparison.OrdinalIgnoreCase)
             || normalizedPagePath.Equals("/Language", StringComparison.OrdinalIgnoreCase)

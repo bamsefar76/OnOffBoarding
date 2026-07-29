@@ -1,0 +1,165 @@
+@page
+@model UserChangeQueueWeb.Pages.MyProfile.IndexModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["myprofile.title"] = "My profile",
+        ["myprofile.intro"] = "Your registered personal data and upcoming assignments.",
+        ["myprofile.notFound"] = "We couldn't find a registered employee record linked to your account yet. If this seems wrong, contact IT.",
+        ["myprofile.personalData"] = "Personal data",
+        ["myprofile.currentManager"] = "Current manager",
+        ["myprofile.accountName"] = "Account name",
+        ["myprofile.emailUpn"] = "Email/UPN",
+        ["myprofile.correctionFooter"] = "Notice something incorrect? Contact IT to have it corrected.",
+        ["myprofile.yourAssignments"] = "Your assignments",
+        ["myprofile.noAssignments"] = "No current or upcoming assignments found.",
+        ["myprofile.label"] = "Label",
+        ["myprofile.project"] = "Project",
+        ["myprofile.starts"] = "Starts",
+        ["myprofile.ends"] = "Ends",
+        ["myprofile.upcoming"] = "Upcoming",
+        ["myprofile.pendingApproval"] = "Pending approval",
+        ["myprofile.approvedNotProcessed"] = "Approved, not yet processed",
+        ["myprofile.newManager"] = "New manager",
+        ["field.name"] = "Name",
+        ["field.title"] = "Title",
+        ["field.department"] = "Department",
+        ["field.office"] = "Office",
+        ["field.company"] = "Company",
+        ["field.manager"] = "Manager",
+        ["field.privateEmail"] = "Private email",
+        ["field.mobilePhone"] = "Mobile phone",
+        ["field.status"] = "Status"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+
+    ViewData["Title"] = T("myprofile.title");
+}
+
+<h1 class="h3 mb-1">@T("myprofile.title")</h1>
+<p class="text-muted mb-4">@T("myprofile.intro")</p>
+
+@if (!Model.EmployeeFound)
+{
+    <div class="alert alert-warning">
+        @T("myprofile.notFound")
+    </div>
+}
+else
+{
+    var p = Model.Profile!;
+    <div class="row g-4">
+        <div class="col-12 col-xl-5">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h2 class="h5 mb-0">@T("myprofile.personalData")</h2>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-5 text-muted">@T("field.name")</dt>
+                        <dd class="col-7">@p.DisplayName</dd>
+
+                        <dt class="col-5 text-muted">@T("field.title")</dt>
+                        <dd class="col-7">@(string.IsNullOrWhiteSpace(p.Title) ? "-" : p.Title)</dd>
+
+                        <dt class="col-5 text-muted">@T("field.department")</dt>
+                        <dd class="col-7">@(string.IsNullOrWhiteSpace(p.Department) ? "-" : p.Department)</dd>
+
+                        <dt class="col-5 text-muted">@T("field.office")</dt>
+                        <dd class="col-7">@(string.IsNullOrWhiteSpace(p.Office) ? "-" : p.Office)</dd>
+
+                        <dt class="col-5 text-muted">@T("field.company")</dt>
+                        <dd class="col-7">@(string.IsNullOrWhiteSpace(p.Company) ? "-" : p.Company)</dd>
+
+                        <dt class="col-5 text-muted">@T("myprofile.currentManager")</dt>
+                        <dd class="col-7">@(string.IsNullOrWhiteSpace(p.CurrentManagerDisplayName) ? "-" : p.CurrentManagerDisplayName)</dd>
+
+                        <dt class="col-5 text-muted">@T("field.privateEmail")</dt>
+                        <dd class="col-7">@(string.IsNullOrWhiteSpace(p.PrivateEmail) ? "-" : p.PrivateEmail)</dd>
+
+                        <dt class="col-5 text-muted">@T("field.mobilePhone")</dt>
+                        <dd class="col-7">@(string.IsNullOrWhiteSpace(p.MobilePhone) ? "-" : p.MobilePhone)</dd>
+
+                        <dt class="col-5 text-muted">@T("myprofile.accountName")</dt>
+                        <dd class="col-7">@(string.IsNullOrWhiteSpace(p.CurrentSamAccountName) ? "-" : p.CurrentSamAccountName)</dd>
+
+                        <dt class="col-5 text-muted">@T("myprofile.emailUpn")</dt>
+                        <dd class="col-7">@(string.IsNullOrWhiteSpace(p.CurrentUPN) ? "-" : p.CurrentUPN)</dd>
+                    </dl>
+                </div>
+                <div class="card-footer bg-white text-muted small">
+                    @T("myprofile.correctionFooter")
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12 col-xl-7">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h2 class="h5 mb-0">@T("myprofile.yourAssignments")</h2>
+                </div>
+                <div class="card-body p-0">
+                    @if (Model.Assignments.Count == 0)
+                    {
+                        <div class="p-3 text-muted">@T("myprofile.noAssignments")</div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>@T("myprofile.label")</th>
+                                        <th>@T("myprofile.project")</th>
+                                        <th>@T("field.manager")</th>
+                                        <th>@T("myprofile.starts")</th>
+                                        <th>@T("myprofile.ends")</th>
+                                        <th>@T("field.status")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var a in Model.Assignments)
+                                    {
+                                        <tr class="@(a.IsPendingRequest ? "table-info" : a.IsFuture ? "table-warning" : "")">
+                                            <td>
+                                                @(string.IsNullOrWhiteSpace(a.Label) ? "-" : a.Label)
+                                                @if (a.IsPendingRequest)
+                                                {
+                                                    <span class="badge text-bg-info ms-1">
+                                                        @(string.Equals(a.Status, "Approved", StringComparison.OrdinalIgnoreCase) ? T("myprofile.approvedNotProcessed") : T("myprofile.pendingApproval"))
+                                                    </span>
+                                                }
+                                                else if (a.IsFuture)
+                                                {
+                                                    <span class="badge text-bg-warning ms-1">@T("myprofile.upcoming")</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @(string.IsNullOrWhiteSpace(a.ProjectName) ? "-" : a.ProjectName)
+                                                <div class="text-muted small">@a.ProjectNumber</div>
+                                            </td>
+                                            <td>
+                                                @(string.IsNullOrWhiteSpace(a.ManagerDisplayName) ? "-" : a.ManagerDisplayName)
+                                                @if (a.IsNewManager)
+                                                {
+                                                    <span class="badge text-bg-info ms-1">@T("myprofile.newManager")</span>
+                                                }
+                                            </td>
+                                            <td>@(a.StartDate?.ToString("dd.MM.yyyy") ?? "-")</td>
+                                            <td>@(a.EndDate?.ToString("dd.MM.yyyy") ?? "-")</td>
+                                            <td><span class="badge text-bg-light">@a.Status</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}

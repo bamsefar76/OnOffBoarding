@@ -377,7 +377,12 @@ ORDER BY
                 ComputerType = reader.GetString(16),
                 AccessCard = Convert.ToBoolean(reader.GetValue(17)),
                 RequestedBy = reader.GetString(18),
-                CreatedAt = reader.IsDBNull(19) ? null : reader.GetDateTime(19)
+                // ADUserChangeQueue.CreatedAt is stored as UTC (column default is sysutcdatetime()).
+                // SqlClient returns DateTime.Kind = Unspecified regardless, so it must be explicitly
+                // tagged as UTC before converting to the server's local time zone for display.
+                CreatedAt = reader.IsDBNull(19)
+                    ? null
+                    : DateTime.SpecifyKind(reader.GetDateTime(19), DateTimeKind.Utc).ToLocalTime()
             });
         }
     }

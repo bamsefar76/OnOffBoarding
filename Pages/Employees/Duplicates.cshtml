@@ -1,37 +1,75 @@
 @page
 @model UserChangeQueueWeb.Pages.Employees.DuplicatesModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
 @{
-    ViewData["Title"] = "Duplicate employees";
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["duplicates.title"] = "Duplicate employees",
+        ["duplicates.intro"] = "Possible duplicates are never merged automatically. Choose which employee to retain.",
+        ["duplicates.noneFound"] = "No likely duplicates found.",
+        ["duplicates.employeeA"] = "Employee A",
+        ["duplicates.employeeB"] = "Employee B",
+        ["duplicates.matches"] = "Matches",
+        ["duplicates.merge"] = "Merge",
+        ["duplicates.email"] = "Email",
+        ["duplicates.phone"] = "Phone",
+        ["duplicates.telephone"] = "Telephone",
+        ["field.name"] = "Name",
+        ["duplicates.score"] = "Score",
+        ["duplicates.tel"] = "Tel",
+        ["duplicates.confirmMerge"] = "Merge these employees? This moves all history and requests.",
+        ["duplicates.keepOption"] = "Keep {0} (#{1})",
+        ["duplicates.reasonOptional"] = "Reason (optional)",
+        ["duplicates.notADuplicate"] = "Not a duplicate",
+        ["duplicates.confirmDismiss"] = "Mark these two as not duplicates? They will stop appearing here together.",
+        ["duplicates.dismissReasonOptional"] = "Reason (optional, e.g. admin account)"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    string F(string key, params object[] args) => string.Format(uiText.T(key, textFallbacks[key]), args);
+
+    ViewData["Title"] = T("duplicates.title");
+    var confirmMerge = T("duplicates.confirmMerge");
+    var confirmDismiss = T("duplicates.confirmDismiss");
 }
-<h2>Duplicate employees</h2>
-<p class="text-muted">Possible duplicates are never merged automatically. Choose which employee to retain.</p>
+<h2>@T("duplicates.title")</h2>
+<p class="text-muted">@T("duplicates.intro")</p>
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage)) { <div class="alert alert-info">@Model.StatusMessage</div> }
-@if (Model.Pairs.Count == 0) { <div class="alert alert-success">No likely duplicates found.</div> }
+@if (Model.Pairs.Count == 0) { <div class="alert alert-success">@T("duplicates.noneFound")</div> }
 else
 {
 <table class="table table-striped table-bordered align-middle">
-<thead><tr><th>Employee A</th><th>Employee B</th><th>Matches</th><th>Merge</th></tr></thead>
+<thead><tr><th>@T("duplicates.employeeA")</th><th>@T("duplicates.employeeB")</th><th>@T("duplicates.matches")</th><th>@T("duplicates.merge")</th></tr></thead>
 <tbody>
 @foreach (var p in Model.Pairs)
 {
 <tr>
-<td><strong>@p.Name1</strong> <span class="text-muted">#@p.EmployeeId1</span><br/>@p.Email1<br/>@p.Phone1<br/>@p.Upn1</td>
-<td><strong>@p.Name2</strong> <span class="text-muted">#@p.EmployeeId2</span><br/>@p.Email2<br/>@p.Phone2<br/>@p.Upn2</td>
+<td><strong>@p.Name1</strong> <span class="text-muted">#@p.EmployeeId1</span><br/>@p.Email1<br/>@p.Phone1<br/>@p.Upn1<br/><span class="text-muted">@T("duplicates.tel"): @p.Telephone1</span></td>
+<td><strong>@p.Name2</strong> <span class="text-muted">#@p.EmployeeId2</span><br/>@p.Email2<br/>@p.Phone2<br/>@p.Upn2<br/><span class="text-muted">@T("duplicates.tel"): @p.Telephone2</span></td>
 <td>
-@if (p.EmailMatch) { <span class="badge bg-success me-1">Email</span> }
-@if (p.PhoneMatch) { <span class="badge bg-success me-1">Phone</span> }
-@if (p.NameMatch) { <span class="badge bg-secondary me-1">Name</span> }
-<div class="small text-muted mt-1">Score: @p.Score</div>
+@if (p.EmailMatch) { <span class="badge bg-success me-1">@T("duplicates.email")</span> }
+@if (p.PhoneMatch) { <span class="badge bg-success me-1">@T("duplicates.phone")</span> }
+@if (p.TelephoneMatch) { <span class="badge bg-success me-1">@T("duplicates.telephone")</span> }
+@if (p.NameMatch) { <span class="badge bg-secondary me-1">@T("field.name")</span> }
+<div class="small text-muted mt-1">@T("duplicates.score"): @p.Score</div>
 </td>
 <td>
-<form method="post" asp-page-handler="Merge" onsubmit="return confirm('Merge these employees? This moves all history and requests.');">
+<form method="post" asp-page-handler="Merge" onsubmit="return confirm('@confirmMerge');" class="mb-2">
 <select name="RetainedEmployeeId" class="form-select form-select-sm mb-1">
-<option value="@p.EmployeeId1">Keep @p.Name1 (#@p.EmployeeId1)</option>
-<option value="@p.EmployeeId2">Keep @p.Name2 (#@p.EmployeeId2)</option>
+<option value="@p.EmployeeId1">@F("duplicates.keepOption", p.Name1, p.EmployeeId1)</option>
+<option value="@p.EmployeeId2">@F("duplicates.keepOption", p.Name2, p.EmployeeId2)</option>
 </select>
 <input type="hidden" name="MergedEmployeeId" value="@p.EmployeeId2" class="merged-id" />
-<input name="Reason" class="form-control form-control-sm mb-1" placeholder="Reason (optional)" />
-<button class="btn btn-sm btn-danger" type="submit">Merge</button>
+<input name="Reason" class="form-control form-control-sm mb-1" placeholder="@T("duplicates.reasonOptional")" />
+<button class="btn btn-sm btn-danger" type="submit">@T("duplicates.merge")</button>
+</form>
+<form method="post" asp-page-handler="Dismiss" onsubmit="return confirm('@confirmDismiss');">
+<input type="hidden" name="DismissEmployeeId1" value="@p.EmployeeId1" />
+<input type="hidden" name="DismissEmployeeId2" value="@p.EmployeeId2" />
+<input name="DismissReason" class="form-control form-control-sm mb-1" placeholder="@T("duplicates.dismissReasonOptional")" />
+<button class="btn btn-sm btn-outline-secondary" type="submit">@T("duplicates.notADuplicate")</button>
 </form>
 </td>
 </tr>

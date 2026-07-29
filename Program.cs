@@ -18,6 +18,10 @@ if (builder.Environment.IsDevelopment())
             AuthenticationSchemes.Negotiate |
             AuthenticationSchemes.NTLM;
         options.Authentication.AllowAnonymous = false;
+        // Default (~28.6MB) was rejecting large form posts (e.g. Settings/Translations'
+        // bulk-save, which posts one field per key per language) at the transport layer,
+        // before the request ever reached application code -- hence a 400 with no body.
+        options.MaxRequestBodySize = null; // no limit
     });
 
     builder.Services.AddAuthentication(HttpSysDefaults.AuthenticationScheme);

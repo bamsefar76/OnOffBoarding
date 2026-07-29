@@ -1,7 +1,34 @@
 ﻿@page
 @model UserChangeQueueWeb.Pages.Assignments.CreateModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
 @{
     ViewData["Title"] = "Add assignment";
+
+    // Only the fields added on top of the pre-existing Add Assignment page are wired to
+    // translations here -- the rest of this page's text was already hardcoded before these
+    // changes and is out of scope for this pass.
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["field.computerType"] = "Computer type",
+        ["field.accessCardRequired"] = "Access card required",
+        ["assignments.accessCardGroups"] = "Access-card groups",
+        ["assignments.accessCardGroupsHelp"] = "Select access at one or more physical sites. Restricted groups are only shown to authorized users.",
+        ["assignments.primaryOffice"] = "primary office",
+        ["assignments.noAccessCardGroups"] = "No access-card groups are available to you.",
+        ["assignments.officeLicenseHelp"] = "Office license is set automatically from the selected title.",
+        ["usercreate.automaticGroups"] = "Automatic groups",
+        ["usercreate.noAutomaticGroupsMatched"] = "No automatic group rules matched yet.",
+        ["common.group"] = "Group",
+        ["common.rule"] = "Rule",
+        ["common.required"] = "Required",
+        ["common.approval"] = "Approval",
+        ["common.yes"] = "Yes",
+        ["common.no"] = "No",
+        ["common.notRequired"] = "Not required"
+    };
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
 }
 
 <h1>Add assignment</h1>
@@ -28,7 +55,12 @@
                         {
                             <option value="@domain.Domain"
                                     data-office="@domain.Office"
-                                    data-company="@domain.Company">
+                                    data-company="@domain.Company"
+                                    data-ou="@domain.OU"
+                                    data-street="@domain.Street"
+                                    data-zipcode="@domain.Zipcode"
+                                    data-city="@domain.City"
+                                    data-country="@domain.Country">
                                 @domain.Label
                             </option>
                         }
@@ -140,33 +172,27 @@
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label asp-for="Department" class="form-label">Department / project</label>
-                    <select asp-for="Department" class="form-select" id="Department" disabled="@(string.IsNullOrWhiteSpace(Model.SelectedDomain))">
-                        @if (string.IsNullOrWhiteSpace(Model.SelectedDomain))
-                        {
-                            <option value="">-- Select label first --</option>
-                        }
-                        else
-                        {
-                            <option value="">-- Select project --</option>
-                            @foreach (var project in Model.Projects)
-                            {
-                                <option value="@project.ProjectName">@project.ProjectNumber — @project.ProjectName</option>
-                            }
-                        }
-                    </select>
-                    <div class="form-text">Loaded from the Projects table.</div>
-                </div>
-                <div class="col-md-6">
                     <label asp-for="Title" class="form-label">Title</label>
-                    <select asp-for="Title" class="form-select">
+                    <select asp-for="Title" class="form-select" id="titleSelect">
                         <option value="">-- Select title --</option>
                         @foreach (var title in Model.Titles)
                         {
-                            <option value="@title">@title</option>
+                            <option value="@title"
+                                    data-office-license="@Model.GetConfiguredOfficeLicenseForTitle(title)"
+                                    data-office-license-has-rule="@(!string.IsNullOrWhiteSpace(Model.GetConfiguredOfficeLicenseForTitle(title))).ToString().ToLowerInvariant()">
+                                @title
+                            </option>
                         }
                     </select>
+                    <div class="form-text" id="officeLicenseMessage">@T("assignments.officeLicenseHelp")</div>
                 </div>
+                <input asp-for="Department" type="hidden" id="Department" />
+                <input asp-for="NewOU" type="hidden" id="NewOU" />
+                <input asp-for="StreetAddress" type="hidden" id="StreetAddress" />
+                <input asp-for="PostalCode" type="hidden" id="PostalCode" />
+                <input asp-for="City" type="hidden" id="City" />
+                <input asp-for="Country" type="hidden" id="Country" />
+                <input asp-for="OfficeLicense" type="hidden" id="OfficeLicense" />
                 <div class="col-md-3">
                     <label asp-for="StartDateText" class="form-label">Start date</label>
                     <input asp-for="StartDateText"
@@ -187,8 +213,107 @@
                            placeholder="dd.mm.yyyy" />
                     <span asp-validation-for="EndDateText" class="text-danger"></span>
                 </div>
+                <div class="col-md-4">
+                    <label asp-for="ComputerType" class="form-label">@T("field.computerType")</label>
+                    <select asp-for="ComputerType" class="form-select" id="computerTypeSelect">
+                        <option value="" data-domain="">-- Select computer type --</option>
+                        @foreach (var computerType in Model.ComputerTypes)
+                        {
+                            <option value="@computerType.ComputerType" data-domain="@computerType.Domain">
+                                @computerType.ComputerType
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-8 d-flex align-items-end">
+                    <div class="form-check">
+                        <input asp-for="AccessCard" id="accessCardCheckbox" class="form-check-input" type="checkbox" />
+                        <label asp-for="AccessCard" class="form-check-label">@T("field.accessCardRequired")</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div id="accessCardGroupsPanel" class="border rounded p-3" style="display:@(Model.AccessCard ? "block" : "none");">
+                        <strong>@T("assignments.accessCardGroups")</strong>
+                        <p class="text-muted small mb-2">@T("assignments.accessCardGroupsHelp")</p>
+                        @if (Model.AccessCardGroups.Any())
+                        {
+                            @foreach (var siteGroup in Model.AccessCardGroups.GroupBy(group => group.Site))
+                            {
+                                <fieldset class="border rounded p-2 mb-2">
+                                    <legend class="h6">
+                                        @siteGroup.Key
+                                        @if (string.Equals(siteGroup.Key, Model.Office, StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <small class="text-muted fw-normal">(@T("assignments.primaryOffice"))</small>
+                                        }
+                                    </legend>
+                                    @foreach (var group in siteGroup)
+                                    {
+                                        <div class="form-check">
+                                            <input type="checkbox"
+                                                   class="form-check-input"
+                                                   name="SelectedAccessCardGroupIds"
+                                                   value="@group.Id"
+                                                   checked="@Model.SelectedAccessCardGroupIds.Contains(group.Id)" />
+                                            <label class="form-check-label">
+                                                <strong>@group.DisplayName</strong>
+                                                @if (!string.IsNullOrWhiteSpace(group.Description))
+                                                {
+                                                    <span> — @group.Description</span>
+                                                }
+                                            </label>
+                                        </div>
+                                    }
+                                </fieldset>
+                            }
+                        }
+                        else
+                        {
+                            <p class="text-muted small mb-0">@T("assignments.noAccessCardGroups")</p>
+                        }
+                    </div>
+                </div>
             </div>
         </div>
+    </div>
+
+    <div class="mt-4">
+        <h3 class="h5">@T("usercreate.automaticGroups")</h3>
+        @if (Model.RecommendedGroups.Any())
+        {
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>@T("common.group")</th>
+                        <th>@T("common.rule")</th>
+                        <th>@T("common.required")</th>
+                        <th>@T("common.approval")</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var group in Model.RecommendedGroups)
+                {
+                    <tr>
+                        <td>
+                            <strong>@(!string.IsNullOrWhiteSpace(group.SamAccountName) ? group.SamAccountName : group.Name)</strong>
+                            @if (!string.IsNullOrWhiteSpace(group.Reason))
+                            {
+                                <br />
+                                <small>@group.Reason</small>
+                            }
+                        </td>
+                        <td>@group.RuleSetName</td>
+                        <td>@(group.Required ? T("common.yes") : T("common.no"))</td>
+                        <td>@(group.ApprovalRequired ? T("common.required") : T("common.notRequired"))</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="text-muted">@T("usercreate.noAutomaticGroupsMatched")</p>
+        }
     </div>
 
     <div class="alert alert-info">
@@ -213,10 +338,20 @@
             const projectSelect = document.getElementById('ProjectId');
             const departmentSelect = document.getElementById('Department');
             const officeInput = document.getElementById('Office');
+            const newOuInput = document.getElementById('NewOU');
+            const streetInput = document.getElementById('StreetAddress');
+            const zipcodeInput = document.getElementById('PostalCode');
+            const cityInput = document.getElementById('City');
+            const countryInput = document.getElementById('Country');
+            const titleSelect = document.getElementById('titleSelect');
+            const officeLicenseInput = document.getElementById('OfficeLicense');
             const managerSelect = document.getElementById('ManagerSamAccountName');
             const employeeTypeSelect = document.getElementById('EmployeeType');
             const endDateContainer = document.getElementById('endDateContainer');
             const endDateInput = document.getElementById('EndDateText');
+            const computerTypeSelect = document.getElementById('computerTypeSelect');
+            const accessCardCheckbox = document.getElementById('accessCardCheckbox');
+            const accessCardGroupsPanel = document.getElementById('accessCardGroupsPanel');
             const initialProjectId = '@(Model.ProjectId?.ToString() ?? "")';
             const initialManager = '@(Model.ManagerSamAccountName ?? "")';
             const initialDepartment = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Department ?? ""));
@@ -305,20 +440,16 @@
             async function loadProjects(selectedProjectId = '') {
                 const domain = domainSelect.value;
                 projectSelect.innerHTML = '';
-                departmentSelect.innerHTML = '';
 
                 if (!domain) {
                     projectSelect.disabled = true;
-                    departmentSelect.disabled = true;
                     projectSelect.add(new Option('-- Select label first --', ''));
-                    departmentSelect.add(new Option('-- Select label first --', ''));
+                    departmentSelect.value = '';
                     return;
                 }
 
                 projectSelect.disabled = true;
-                departmentSelect.disabled = true;
                 projectSelect.add(new Option('Loading projects...', ''));
-                departmentSelect.add(new Option('Loading projects...', ''));
 
                 const params = new URLSearchParams({
                     handler: 'Projects',
@@ -330,32 +461,30 @@
                 });
 
                 projectSelect.innerHTML = '';
-                departmentSelect.innerHTML = '';
                 projectSelect.add(new Option('-- No project selected --', ''));
-                departmentSelect.add(new Option('-- Select project --', ''));
 
                 if (!response.ok) {
                     projectSelect.add(new Option('Unable to load projects', ''));
-                    departmentSelect.add(new Option('Unable to load projects', ''));
                     return;
                 }
 
                 const projects = await response.json();
+                let matchedProjectName = '';
                 for (const project of projects) {
                     const text = project.projectNumber
                         ? `${project.projectNumber} — ${project.projectName}`
                         : project.projectName;
                     const option = new Option(text, project.id);
                     option.selected = String(project.id) === String(selectedProjectId);
+                    if (option.selected) matchedProjectName = project.projectName ?? '';
                     projectSelect.add(option);
-
-                    const departmentOption = new Option(text, project.projectName);
-                    departmentOption.selected = String(project.projectName) === String(initialDepartment);
-                    departmentSelect.add(departmentOption);
                 }
 
+                // Department mirrors whichever project ends up selected -- fall back to the
+                // originally-loaded department (e.g. when editing) if nothing matched yet.
+                departmentSelect.value = matchedProjectName || initialDepartment || '';
+
                 projectSelect.disabled = false;
-                departmentSelect.disabled = false;
             }
 
             async function loadManagers(selectedManager = '') {
@@ -406,10 +535,55 @@
                 if (!requiresEndDate) endDateInput.value = '';
             }
 
+            function filterComputerTypesByDomain() {
+                if (!computerTypeSelect) return;
+                const selectedDomain = domainSelect.value;
+                for (const option of computerTypeSelect.options) {
+                    const optionDomain = option.getAttribute('data-domain') || '';
+                    option.hidden = option.value !== '' && optionDomain !== '' && optionDomain !== selectedDomain;
+                }
+                const selectedOption = computerTypeSelect.options[computerTypeSelect.selectedIndex];
+                if (selectedOption && selectedOption.hidden) {
+                    computerTypeSelect.value = '';
+                }
+            }
+
+            function toggleAccessCardGroups() {
+                if (!accessCardCheckbox || !accessCardGroupsPanel) return;
+                accessCardGroupsPanel.style.display = accessCardCheckbox.checked ? 'block' : 'none';
+            }
+
+            function updateOfficeLicenseFromTitle() {
+                if (!titleSelect || !officeLicenseInput) return;
+                const selected = titleSelect.options[titleSelect.selectedIndex];
+                officeLicenseInput.value = (selected && selected.value)
+                    ? (selected.getAttribute('data-office-license') || '')
+                    : '';
+            }
+
+            function normalizeMobilePhone() {
+                const mobileEl = document.getElementById('MobilePhone');
+                if (!mobileEl) return;
+
+                let value = mobileEl.value;
+                value = value.replace(/\s+/g, '');
+                value = value.replace(/-/g, '');
+
+                // Bare 8-digit numbers are assumed Norwegian and get +47. Anything else
+                // (already has a +country prefix, or isn't 8 digits) is left as entered.
+                if (/^\d{8}$/.test(value)) {
+                    value = '+47' + value;
+                }
+
+                mobileEl.value = value;
+            }
+
             fields.forEach(field => field.addEventListener('input', () => {
                 clearTimeout(timer);
                 timer = setTimeout(search, 500);
             }));
+
+            document.getElementById('MobilePhone')?.addEventListener('input', normalizeMobilePhone);
 
             document.getElementById('clearPerson').addEventListener('click', () => {
                 clearSelection();
@@ -440,12 +614,25 @@
                 const selected = domainSelect.options[domainSelect.selectedIndex];
                 const office = selected?.dataset?.office;
                 if (office && !officeInput.value) officeInput.value = office;
+                if (newOuInput) newOuInput.value = selected?.dataset?.ou || '';
+                if (streetInput) streetInput.value = selected?.dataset?.street || '';
+                if (zipcodeInput) zipcodeInput.value = selected?.dataset?.zipcode || '';
+                if (cityInput) cityInput.value = selected?.dataset?.city || '';
+                if (countryInput) countryInput.value = selected?.dataset?.country || '';
                 loadProjects('');
                 loadManagers('');
+                filterComputerTypesByDomain();
             });
 
             employeeTypeSelect.addEventListener('change', updateEndDateVisibility);
             updateEndDateVisibility();
+
+            accessCardCheckbox?.addEventListener('change', toggleAccessCardGroups);
+            toggleAccessCardGroups();
+            filterComputerTypesByDomain();
+
+            titleSelect?.addEventListener('change', updateOfficeLicenseFromTitle);
+            updateOfficeLicenseFromTitle();
 
             if (domainSelect.value) {
                 loadProjects(initialProjectId);
