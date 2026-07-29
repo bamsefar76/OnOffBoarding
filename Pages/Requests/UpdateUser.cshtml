@@ -1,0 +1,691 @@
+@page
+@model UpdateUserModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.yes"] = "Yes",
+        ["common.no"] = "No",
+        ["common.required"] = "Required",
+        ["common.notRequired"] = "Not required",
+        ["common.group"] = "Group",
+        ["common.rule"] = "Rule",
+        ["common.approval"] = "Approval",
+        ["field.executeAfter"] = "Start on",
+        ["field.givenName"] = "Given name",
+        ["field.surname"] = "Surname",
+        ["field.domain"] = "Domain",
+        ["field.departmentProject"] = "Department / Project",
+        ["field.title"] = "Title",
+        ["field.employeeType"] = "Employee type",
+        ["field.accountExpirationDate"] = "End date",
+        ["field.manager"] = "Manager",
+        ["field.officeLicense"] = "Microsoft Office license",
+        ["field.computerType"] = "Computer type",
+        ["field.mobilePhone"] = "Mobile phone",
+        ["field.privateEmail"] = "Private email",
+        ["field.accessCard"] = "Access card",
+        ["field.enabled"] = "Enabled",
+        ["field.name"] = "Name",
+        ["field.username"] = "Username",
+        ["field.mail"] = "Mail",
+        ["field.displayName"] = "Display name",
+        ["field.company"] = "Company",
+        ["field.streetAddress"] = "Street address",
+        ["field.postalCode"] = "Postal code",
+        ["field.city"] = "City",
+        ["field.country"] = "Country",
+        ["field.office"] = "Office",
+        ["field.upn"] = "UPN",
+        ["field.ouDn"] = "OU / Distinguished name",
+        ["select.domain"] = "Select domain",
+        ["select.title"] = "Select title",
+        ["select.employeeType"] = "Select employee type",
+        ["select.manager"] = "Select manager",
+        ["select.computerType"] = "Select computer type",
+        ["select.project"] = "Select project",
+        ["usercreate.automaticGroups"] = "Automatic groups",
+        ["usercreate.noAutomaticGroupsMatched"] = "No automatic group rules matched yet.",
+        ["usercreate.groupsCalculatedOnSave"] = "Groups are calculated on the server when the request is saved.",
+        ["usercreate.previewAutomaticGroups"] = "Preview automatic groups",
+        ["office.selectTitleMessage"] = "Select a title to calculate the Office license.",
+        ["office.noRuleMessage"] = "No Office license rule is configured for this title.",
+        ["office.calculatedFromTitlePrefix"] = "Calculated from title: ",
+        ["office.noLicenseMessage"] = "Calculated from title: no Office license.",
+        ["update.title"] = "Update user",
+        ["update.searchUser"] = "Search user",
+        ["update.search"] = "Search",
+        ["update.select"] = "Select",
+        ["update.selectedUser"] = "Selected user",
+        ["update.requestedChanges"] = "Requested changes",
+        ["update.sectionEmployment"] = "Employment",
+        ["update.sectionIdentity"] = "Identity",
+        ["update.sectionOrganization"] = "Organization",
+        ["update.sectionIt"] = "IT and contact",
+        ["update.savePendingUpdateRequest"] = "Save pending update request",
+        ["update.submitUpdateRequest"] = "Submit update request",
+        ["update.currentAdValues"] = "Current AD values / restricted fields"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    ViewData["Title"] = uiText.T("update.title", textFallbacks["update.title"]);
+
+    string T(string key)
+    {
+        return uiText.T(key, textFallbacks[key]);
+    }
+}
+
+<h2>@T("update.title")</h2>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <p><strong>@Model.Message</strong></p>
+}
+
+<form method="post" asp-page-handler="Search">
+
+    <label>@T("update.searchUser")</label><br />
+
+    <input asp-for="SearchText" />
+
+    <button type="submit">
+        @T("update.search")
+    </button>
+
+</form>
+
+@if (Model.SearchResults.Any())
+{
+    <table class="table">
+
+        <thead>
+            <tr>
+                <th>@T("field.name")</th>
+                <th>@T("field.username")</th>
+                <th>@T("field.mail")</th>
+                <th></th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+        @foreach (var u in Model.SearchResults)
+        {
+            <tr>
+                <td>@u.DisplayName</td>
+                <td>@u.SamAccountName</td>
+                <td>@u.Mail</td>
+
+                <td>
+                    <a href="/Requests/UpdateUser?user=@u.ObjectGuid">
+                        @T("update.select")
+                    </a>
+                </td>
+            </tr>
+        }
+
+        </tbody>
+
+    </table>
+}
+
+@if (Model.HasSelectedUser)
+{
+    <hr />
+
+    <h3>@T("update.selectedUser")</h3>
+
+    <p>
+        <strong>@Model.CurrentDisplayName</strong><br />
+        @T("field.username"): @Model.CurrentSamAccountName<br />
+        @T("field.mail"): @Model.CurrentMail
+    </p>
+
+    <form method="post" style="display:grid; grid-template-columns: 1fr 420px; gap:30px; align-items:start;">
+
+        <input type="hidden" asp-for="RequestId" />
+        <input type="hidden" asp-for="SelectedObjectGuid" />
+
+        <div>
+            <h3>@T("update.sectionEmployment")</h3>
+
+            <div style="display:grid; grid-template-columns: minmax(220px, 1fr) 150px 150px; gap:20px; align-items:flex-start; margin-bottom:20px;">
+                <div>
+                    <label>@T("field.employeeType")</label><br />
+                    <select asp-for="EmployeeType" id="employeeTypeSelect" style="width:100%;">
+                        <option value="">@T("select.employeeType")</option>
+                        @foreach (var employeeType in Model.EmployeeTypes)
+                        {
+                            <option value="@employeeType.EmployeeType"
+                                    data-requires-enddate="@employeeType.RequiresEndDate.ToString().ToLower()">
+                                @employeeType.EmployeeType
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                <div>
+                    <label>@T("field.executeAfter")</label><br />
+                    <input asp-for="ExecuteAfter"
+                           type="text"
+                           id="executeAfter"
+                           data-normalize-date="true"
+                           value='@Model.ExecuteAfter.ToString("dd.MM.yyyy")'
+                           placeholder="dd.MM.yyyy"
+                           style="width:140px;" />
+                </div>
+
+                <div id="endDateContainer">
+                    <label>@T("field.accountExpirationDate")</label><br />
+                    <input asp-for="AccountExpirationDate"
+                           type="text"
+                           id="accountExpirationDate"
+                           data-normalize-date="true"
+                           value='@(Model.AccountExpirationDate?.ToString("dd.MM.yyyy"))'
+                           placeholder="dd.MM.yyyy"
+                           style="width:140px;" />
+                </div>
+            </div>
+
+            <h3>@T("update.sectionIdentity")</h3>
+
+            <div style="display:grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr); gap:20px; margin-bottom:15px;">
+                <div>
+                    <label>@T("field.givenName")</label><br />
+                    <input asp-for="NewGivenName" style="width:100%;" />
+                </div>
+
+                <div>
+                    <label>@T("field.surname")</label><br />
+                    <input asp-for="NewSurname" style="width:100%;" />
+                </div>
+            </div>
+
+            <label>@T("field.displayName")</label><br />
+            <input asp-for="NewDisplayName" style="width:100%; max-width:460px;" /><br /><br />
+
+            <div style="display:grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr); gap:20px; margin-bottom:15px;">
+                <div>
+                    <label>@T("field.domain")</label><br />
+                    <select asp-for="SelectedDomain" id="domainSelect" style="width:100%;">
+                        <option value="">@T("select.domain")</option>
+                        @foreach (var domain in Model.Domains)
+                        {
+                            <option value="@domain.Domain"
+                                    data-ou="@domain.OU"
+                                    data-company="@domain.Company"
+                                    data-street="@domain.Street"
+                                    data-zipcode="@domain.Zipcode"
+                                    data-city="@domain.City"
+                                    data-country="@domain.Country"
+                                    data-office="@domain.Office">
+                                @domain.Domain
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                <div>
+                    <label>@T("field.departmentProject")</label><br />
+                    <select asp-for="Department" id="departmentSelect" style="width:100%;">
+                        <option value="" data-company="">@T("select.project")</option>
+                        @foreach (var project in Model.Projects)
+                        {
+                            <option value="@project.ProjectName"
+                                    data-company="@project.Company">
+                                @project.ProjectName (@project.ProjectNumber)
+                            </option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <label>@T("field.privateEmail")</label><br />
+            <input asp-for="PrivateEmail" type="email" style="width:100%; max-width:460px;" /><br /><br />
+
+            <h3>@T("update.sectionOrganization")</h3>
+
+            <div style="display:grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1fr); gap:20px; margin-bottom:15px;">
+                <div>
+                    <label>@T("field.title")</label><br />
+                    <select asp-for="Title" id="titleSelect" style="width:100%;">
+                        <option value="" data-office-license="" data-office-license-has-rule="false">@T("select.title")</option>
+                        @foreach (var title in Model.Titles)
+                        {
+                            <option value="@title"
+                                    data-office-license="@Model.GetConfiguredOfficeLicenseForTitle(title)"
+                                    data-office-license-has-rule="@Model.HasOfficeLicenseRuleForTitle(title).ToString().ToLowerInvariant()">
+                                @title
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                <div>
+                    <label>@T("field.manager")</label><br />
+                    <select asp-for="ManagerSamAccountName" id="managerSelect" style="width:100%;">
+                        <option value="" data-domain="">@T("select.manager")</option>
+                        @foreach (var manager in Model.Managers)
+                        {
+                            <option value="@manager.SamAccountName"
+                                    data-domain="@manager.Domain"
+                                    data-employee-type="@manager.EmployeeType">
+                                @manager.DisplayName (@manager.SamAccountName)
+                            </option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            <h3>@T("update.sectionIt")</h3>
+
+            <label>@T("field.mobilePhone")</label><br />
+            <input asp-for="MobilePhone" /><br /><br />
+
+            <label>@T("field.computerType")</label><br />
+            <select asp-for="ComputerType" id="computerTypeSelect">
+                <option value="" data-domain="">@T("select.computerType")</option>
+                @foreach (var computerType in Model.ComputerTypes)
+                {
+                    <option value="@computerType.ComputerType"
+                            data-domain="@computerType.Domain">
+                        @computerType.ComputerType
+                    </option>
+                }
+            </select>
+            <br /><br />
+
+            <label>
+                <input asp-for="AccessCard" id="accessCardCheckbox" />
+                @T("field.accessCard")
+            </label><br /><br />
+
+            <div id="accessCardGroupsPanel" style="margin:0 0 20px 24px; padding:14px; border:1px solid #ccc; border-radius:6px; display:@(Model.AccessCard ? "block" : "none"); max-width:900px;">
+                <strong>Access-card groups</strong>
+                <p style="margin:6px 0 12px 0;"><small>Select access at one or more physical sites. Restricted groups are only shown to authorized users.</small></p>
+                @if (Model.AccessCardGroups.Any())
+                {
+                    @foreach (var siteGroup in Model.AccessCardGroups.GroupBy(group => group.Site))
+                    {
+                        <fieldset style="margin:0 0 12px 0; padding:10px 14px; border:1px solid #ddd;">
+                            <legend style="padding:0 6px; font-weight:600;">
+                                @siteGroup.Key
+                                @if (string.Equals(siteGroup.Key, Model.Office, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <small style="font-weight:normal;">(primary office)</small>
+                                }
+                            </legend>
+                            @foreach (var group in siteGroup)
+                            {
+                                <label style="display:block; margin:6px 0;">
+                                    <input type="checkbox"
+                                           name="SelectedAccessCardGroupIds"
+                                           value="@group.Id"
+                                           checked="@Model.SelectedAccessCardGroupIds.Contains(group.Id)" />
+                                    <strong>@group.DisplayName</strong>
+                                    @if (!string.IsNullOrWhiteSpace(group.Description))
+                                    {
+                                        <span> — @group.Description</span>
+                                    }
+                                </label>
+                            }
+                        </fieldset>
+                    }
+                }
+                else
+                {
+                    <p>No access-card groups are available to your account.</p>
+                }
+            </div>
+
+            <label>
+                <input asp-for="Enabled" />
+                @T("field.enabled")
+            </label><br /><br />
+
+            <h3>@T("usercreate.automaticGroups")</h3>
+            @if (Model.RecommendedGroups.Any())
+            {
+                <table class="table" style="width:100%; max-width:900px;">
+                    <thead>
+                        <tr>
+                            <th>@T("common.group")</th>
+                            <th>@T("common.rule")</th>
+                            <th>@T("common.required")</th>
+                            <th>@T("common.approval")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var group in Model.RecommendedGroups)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@(!string.IsNullOrWhiteSpace(group.SamAccountName) ? group.SamAccountName : group.Name)</strong>
+                                @if (!string.IsNullOrWhiteSpace(group.Reason))
+                                {
+                                    <br />
+                                    <small>@group.Reason</small>
+                                }
+                            </td>
+                            <td>@group.RuleSetName</td>
+                            <td>@(group.Required ? T("common.yes") : T("common.no"))</td>
+                            <td>@(group.ApprovalRequired ? T("common.required") : T("common.notRequired"))</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p>@T("usercreate.noAutomaticGroupsMatched")</p>
+            }
+            <p><small>@T("usercreate.groupsCalculatedOnSave")</small></p>
+            <br />
+            <button type="submit" asp-page-handler="PreviewGroups">
+                @T("usercreate.previewAutomaticGroups")
+            </button>
+            <button type="submit" asp-page-handler="SubmitUpdate">
+                @(Model.RequestId.HasValue ? T("update.savePendingUpdateRequest") : T("update.submitUpdateRequest"))
+            </button>
+        </div>
+
+        <div style="padding:15px; background:#f3f3f3; border:1px solid #ccc;">
+            <h3>@T("update.currentAdValues")</h3>
+
+            <label>@T("field.upn")</label><br />
+            <input asp-for="NewUserPrincipalName" readonly /><br /><br />
+
+            <label>@T("field.mail")</label><br />
+            <input asp-for="Mail" readonly /><br /><br />
+
+            <label>@T("field.officeLicense")</label><br />
+            <input asp-for="OfficeLicense" id="officeLicense" readonly style="width:100%;" />
+            <br />
+            <small id="officeLicenseRuleMessage">@Model.OfficeLicenseRuleMessage</small>
+            <br /><br />
+
+            <label>@T("field.ouDn")</label><br />
+            <textarea asp-for="NewOU" readonly rows="4" style="width:100%;"></textarea><br /><br />
+
+            <label>@T("field.company")</label><br />
+            <input asp-for="Company" readonly /><br /><br />
+
+            <label>@T("field.streetAddress")</label><br />
+            <input asp-for="StreetAddress" readonly /><br /><br />
+
+            <label>@T("field.postalCode")</label><br />
+            <input asp-for="PostalCode" readonly /><br /><br />
+
+            <label>@T("field.city")</label><br />
+            <input asp-for="City" readonly /><br /><br />
+
+            <label>@T("field.country")</label><br />
+            <input asp-for="Country" readonly /><br /><br />
+
+            <label>@T("field.office")</label><br />
+            <input asp-for="Office" readonly /><br /><br />
+        </div>
+
+    </form>
+}
+
+<script>
+    function toggleAccessCardGroups() {
+        const checkbox = document.getElementById("accessCardCheckbox");
+        const panel = document.getElementById("accessCardGroupsPanel");
+        if (!checkbox || !panel) return;
+        panel.style.display = checkbox.checked ? "block" : "none";
+        if (!checkbox.checked) {
+            for (const input of panel.querySelectorAll("input[type=checkbox]")) input.checked = false;
+        }
+    }
+
+
+    const officeSelectTitleMessage = @System.Text.Json.JsonSerializer.Serialize(T("office.selectTitleMessage"));
+    const officeNoRuleMessage = @System.Text.Json.JsonSerializer.Serialize(T("office.noRuleMessage"));
+    const officeCalculatedFromTitlePrefix = @System.Text.Json.JsonSerializer.Serialize(T("office.calculatedFromTitlePrefix"));
+    const officeNoLicenseMessage = @System.Text.Json.JsonSerializer.Serialize(T("office.noLicenseMessage"));
+
+    function normalizeDateValue(value) {
+        if (!value) {
+            return value;
+        }
+
+        const trimmed = value.trim();
+
+        if (!trimmed) {
+            return trimmed;
+        }
+
+        const normalizedSeparators = trimmed.replace(/[\/\-]/g, ".");
+        const match = /^(\d{1,2})\.(\d{1,2})\.(\d{2}|\d{4})$/.exec(normalizedSeparators);
+
+        if (!match) {
+            return trimmed;
+        }
+
+        const day = Number(match[1]);
+        const month = Number(match[2]);
+        let year = Number(match[3]);
+
+        if (year < 100) {
+            year += year >= 70 ? 1900 : 2000;
+        }
+
+        const date = new Date(year, month - 1, day);
+
+        if (
+            date.getFullYear() !== year ||
+            date.getMonth() !== month - 1 ||
+            date.getDate() !== day
+        ) {
+            return trimmed;
+        }
+
+        const dd = String(day).padStart(2, "0");
+        const mm = String(month).padStart(2, "0");
+
+        return `${dd}.${mm}.${year}`;
+    }
+
+    function normalizeDateField(field) {
+        if (!field) {
+            return;
+        }
+
+        field.value = normalizeDateValue(field.value);
+    }
+
+    function wireDateNormalization() {
+        const dateFields = document.querySelectorAll("input[data-normalize-date='true']");
+
+        for (const field of dateFields) {
+            field.addEventListener("blur", function () {
+                normalizeDateField(field);
+            });
+        }
+
+        const forms = document.querySelectorAll("form");
+
+        for (const form of forms) {
+            form.addEventListener("submit", function () {
+                for (const field of dateFields) {
+                    normalizeDateField(field);
+                }
+            });
+        }
+    }
+
+    function updateDomainFields() {
+        const domainSelect = document.getElementById("domainSelect");
+
+        if (!domainSelect) {
+            return;
+        }
+
+        const selectedOption = domainSelect.options[domainSelect.selectedIndex];
+
+        if (!selectedOption || !selectedOption.value) {
+            filterByDomain();
+            filterProjectsByCompany();
+            return;
+        }
+
+        document.getElementById("NewOU").value = selectedOption.getAttribute("data-ou") || "";
+        document.getElementById("Company").value = selectedOption.getAttribute("data-company") || "";
+        document.getElementById("StreetAddress").value = selectedOption.getAttribute("data-street") || "";
+        document.getElementById("PostalCode").value = selectedOption.getAttribute("data-zipcode") || "";
+        document.getElementById("City").value = selectedOption.getAttribute("data-city") || "";
+        document.getElementById("Country").value = selectedOption.getAttribute("data-country") || "";
+        document.getElementById("Office").value = selectedOption.getAttribute("data-office") || "";
+
+        filterByDomain();
+        filterProjectsByCompany();
+    }
+
+    function filterByDomain() {
+        const domainSelect = document.getElementById("domainSelect");
+        const computerTypeSelect = document.getElementById("computerTypeSelect");
+        const managerSelect = document.getElementById("managerSelect");
+
+        if (!domainSelect) {
+            return;
+        }
+
+        const selectedDomain = domainSelect.value;
+
+        if (computerTypeSelect) {
+            for (const option of computerTypeSelect.options) {
+                const optionDomain = option.getAttribute("data-domain") || "";
+
+                option.hidden =
+                    option.value !== "" &&
+                    selectedDomain !== "" &&
+                    optionDomain !== "" &&
+                    optionDomain !== selectedDomain;
+            }
+
+            const selectedOption = computerTypeSelect.options[computerTypeSelect.selectedIndex];
+
+            if (selectedOption && selectedOption.hidden) {
+                computerTypeSelect.value = "";
+            }
+        }
+
+        if (managerSelect) {
+            for (const option of managerSelect.options) {
+                const optionDomain = option.getAttribute("data-domain") || "";
+
+                option.hidden =
+                    option.value !== "" &&
+                    selectedDomain !== "" &&
+                    optionDomain !== selectedDomain;
+            }
+
+            const selectedOption = managerSelect.options[managerSelect.selectedIndex];
+
+            if (selectedOption && selectedOption.hidden) {
+                managerSelect.value = "";
+            }
+        }
+    }
+
+    function filterProjectsByCompany() {
+        const domainSelect = document.getElementById("domainSelect");
+        const departmentSelect = document.getElementById("departmentSelect");
+
+        if (!domainSelect || !departmentSelect) {
+            return;
+        }
+
+        const selectedOption = domainSelect.options[domainSelect.selectedIndex];
+        const selectedCompany = selectedOption
+            ? (selectedOption.getAttribute("data-company") || "").toLowerCase()
+            : "";
+
+        for (const option of departmentSelect.options) {
+            const optionCompany = (option.getAttribute("data-company") || "").toLowerCase();
+
+            if (!option.value) {
+                option.hidden = false;
+                continue;
+            }
+
+            option.hidden = selectedCompany !== "" && optionCompany !== selectedCompany;
+        }
+
+        const selectedDepartmentOption = departmentSelect.options[departmentSelect.selectedIndex];
+
+        if (selectedDepartmentOption && selectedDepartmentOption.hidden) {
+            departmentSelect.value = "";
+        }
+    }
+
+    function updateOfficeLicenseFromTitle() {
+        const titleSelect = document.getElementById("titleSelect");
+        const officeLicenseEl = document.getElementById("officeLicense");
+        const messageEl = document.getElementById("officeLicenseRuleMessage");
+
+        if (!titleSelect || !officeLicenseEl || !messageEl) {
+            return;
+        }
+
+        const selectedOption = titleSelect.options[titleSelect.selectedIndex];
+
+        if (!selectedOption || !selectedOption.value) {
+            officeLicenseEl.value = "";
+            messageEl.innerText = officeSelectTitleMessage;
+            return;
+        }
+
+        const hasRule = selectedOption.getAttribute("data-office-license-has-rule") === "true";
+        const license = selectedOption.getAttribute("data-office-license") || "";
+
+        officeLicenseEl.value = license;
+
+        if (!hasRule) {
+            messageEl.innerText = officeNoRuleMessage;
+        } else if (license) {
+            messageEl.innerText = officeCalculatedFromTitlePrefix + license;
+        } else {
+            messageEl.innerText = officeNoLicenseMessage;
+        }
+    }
+
+    function updateEndDateVisibility() {
+        const employeeTypeEl = document.getElementById("employeeTypeSelect");
+        const endDateContainer = document.getElementById("endDateContainer");
+
+        if (!employeeTypeEl || !endDateContainer) {
+            return;
+        }
+
+        const selectedOption = employeeTypeEl.options[employeeTypeEl.selectedIndex];
+        const requiresEndDate =
+            selectedOption &&
+            selectedOption.getAttribute("data-requires-enddate") === "true";
+
+        endDateContainer.style.display = requiresEndDate ? "block" : "none";
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        const accessCardCheckbox = document.getElementById("accessCardCheckbox");
+        if (accessCardCheckbox) accessCardCheckbox.addEventListener("change", toggleAccessCardGroups);
+        toggleAccessCardGroups();
+        wireDateNormalization();
+        updateDomainFields();
+        filterByDomain();
+        filterProjectsByCompany();
+        updateOfficeLicenseFromTitle();
+        updateEndDateVisibility();
+    });
+
+    document.getElementById("domainSelect")?.addEventListener("change", filterByDomain);
+    document.getElementById("domainSelect")?.addEventListener("change", updateDomainFields);
+    document.getElementById("domainSelect")?.addEventListener("change", filterProjectsByCompany);
+    document.getElementById("employeeTypeSelect")?.addEventListener("change", updateEndDateVisibility);
+    document.getElementById("titleSelect")?.addEventListener("change", updateOfficeLicenseFromTitle);
+</script>

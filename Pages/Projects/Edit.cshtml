@@ -1,0 +1,103 @@
+@page
+@model ProjectEditModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.none"] = "None",
+        ["common.save"] = "Save",
+        ["common.active"] = "Active",
+        ["field.company"] = "Company",
+        ["projectedit.titleAdd"] = "Add project",
+        ["projectedit.titleEdit"] = "Edit project",
+        ["projectedit.backToProjects"] = "Back to projects",
+        ["projectedit.projectName"] = "Project name",
+        ["projectedit.projectNumber"] = "Project number",
+        ["projectedit.selectCompany"] = "Select company",
+        ["projectedit.productionManager"] = "Production manager",
+        ["projectedit.producer"] = "Producer",
+        ["projectedit.executive"] = "Executive",
+        ["projectedit.projectNameRequired"] = "Project name is required."
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+
+    string LocalizeMessage(string? message)
+    {
+        if (string.Equals(message, textFallbacks["projectedit.projectNameRequired"], StringComparison.Ordinal))
+        {
+            return T("projectedit.projectNameRequired");
+        }
+
+        return message ?? string.Empty;
+    }
+
+    ViewData["Title"] = Model.Project.Id == 0 ? T("projectedit.titleAdd") : T("projectedit.titleEdit");
+}
+
+<h2>@ViewData["Title"]</h2>
+
+<p>
+    <a asp-page="/Projects/Index">@T("projectedit.backToProjects")</a>
+</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <p><strong>@LocalizeMessage(Model.Message)</strong></p>
+}
+
+<form method="post">
+    <input type="hidden" asp-for="Project.Id" />
+
+    <label>@T("projectedit.projectName")</label><br />
+    <input asp-for="Project.ProjectName" style="width:350px;" />
+
+    <br /><br />
+
+    <label>@T("projectedit.projectNumber")</label><br />
+    <input asp-for="Project.ProjectNumber" style="width:200px;" />
+
+    <br /><br />
+
+    <label>@T("field.company")</label><br />
+    <select asp-for="Project.Company"
+            asp-items="Model.Companies"
+            onchange="this.form.submit()">
+        <option value="">@T("projectedit.selectCompany")</option>
+    </select>
+
+    <br /><br />
+
+    <label>@T("projectedit.productionManager")</label><br />
+    <select asp-for="Project.ProductionManager" asp-items="Model.CompanyUsers">
+        <option value="">@T("common.none")</option>
+    </select>
+
+    <br /><br />
+
+    <label>@T("projectedit.producer")</label><br />
+    <select asp-for="Project.Producer" asp-items="Model.CompanyUsers">
+        <option value="">@T("common.none")</option>
+    </select>
+
+    <br /><br />
+
+    <label>@T("projectedit.executive")</label><br />
+    <select asp-for="Project.Executive" asp-items="Model.CompanyUsers">
+        <option value="">@T("common.none")</option>
+    </select>
+
+    <br /><br />
+
+    <label>
+        <input asp-for="Project.Active" type="checkbox" />
+        @T("common.active")
+    </label>
+
+    <br /><br />
+
+    <button type="submit" asp-page-handler="Save">@T("common.save")</button>
+</form>

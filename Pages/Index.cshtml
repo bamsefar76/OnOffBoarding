@@ -1,0 +1,294 @@
+﻿@page
+@model IndexModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+@inject PageAccessService PageAccessService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["index.title"] = "Dashboard",
+        ["index.welcome"] = "Dashboard",
+        ["index.intro"] = "Overview of pending approvals, upcoming user changes, and provisioning status.",
+        ["index.pendingApprovals"] = "Pending approvals",
+        ["index.readyToRun"] = "Ready to process",
+        ["index.upcomingOpen"] = "Upcoming open requests",
+        ["index.todayStarters"] = "Starting today",
+        ["index.failed"] = "Failed",
+        ["index.recentlyCompleted"] = "Completed last 7 days",
+        ["index.quickLinks"] = "Quick links",
+        ["index.noAvailableLinks"] = "No application links are available for your user yet.",
+        ["index.upcomingList"] = "Next open requests",
+        ["index.noUpcoming"] = "No open upcoming requests.",
+        ["index.requestId"] = "Request",
+        ["index.type"] = "Type",
+        ["index.status"] = "Status",
+        ["index.startOn"] = "Start on",
+        ["index.user"] = "User",
+        ["index.office"] = "Office",
+        ["index.needs"] = "Needs",
+        ["index.officeLicense"] = "Office license",
+        ["index.computer"] = "Computer",
+        ["index.accessCard"] = "Access card",
+        ["index.mailbox"] = "Mailbox",
+        ["index.viewAllUpcoming"] = "View all upcoming changes",
+        ["nav.newUser"] = "New user",
+        ["nav.updateUser"] = "Update user",
+        ["nav.supervisor"] = "Supervisor",
+        ["nav.approvals"] = "Approvals",
+        ["nav.upcomingChanges"] = "Upcoming",
+        ["nav.groupRules"] = "Group rules",
+        ["nav.cfoReport"] = "CFO report",
+        ["nav.projects"] = "Projects"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var currentUserName = User.Identity?.Name ?? string.Empty;
+    var links = new List<(string Page, string Text)>();
+
+    if (isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/NewUser"))
+    {
+        links.Add(("/Requests/NewUser", T("nav.newUser")));
+    }
+
+    if (isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/UpdateUser"))
+    {
+        links.Add(("/Requests/UpdateUser", T("nav.updateUser")));
+    }
+
+    if (isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/Approvals"))
+    {
+        links.Add(("/Requests/Approvals", T("nav.approvals")));
+    }
+
+    if (isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/Upcoming"))
+    {
+        links.Add(("/Requests/Upcoming", T("nav.upcomingChanges")));
+    }
+
+    if (isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/Supervisor"))
+    {
+        links.Add(("/Requests/Supervisor", T("nav.supervisor")));
+    }
+
+    if (isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/GroupRules"))
+    {
+        links.Add(("/Settings/GroupRules", T("nav.groupRules")));
+    }
+
+    if (isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Snapshot"))
+    {
+        links.Add(("/Snapshot", T("nav.cfoReport")));
+    }
+
+    if (isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Projects"))
+    {
+        links.Add(("/Projects", T("nav.projects")));
+    }
+
+    ViewData["Title"] = T("index.title");
+}
+
+<div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-4">
+    <div>
+        <h1 class="display-6 mb-1">@T("index.welcome")</h1>
+        <p class="text-muted mb-0">@T("index.intro")</p>
+    </div>
+    @if (links.Any(link => link.Page == "/Requests/Upcoming"))
+    {
+        <a class="btn btn-outline-primary" asp-page="/Requests/Upcoming">@T("index.viewAllUpcoming")</a>
+    }
+</div>
+
+<style>
+    .dashboard-stat-link {
+        display: block;
+        color: inherit;
+        text-decoration: none;
+        height: 100%;
+    }
+
+    .dashboard-stat-link .card {
+        transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    }
+
+    .dashboard-stat-link:hover .card,
+    .dashboard-stat-link:focus .card {
+        transform: translateY(-2px);
+        box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .12) !important;
+        border-color: var(--bs-primary);
+    }
+
+    .dashboard-stat-link:focus-visible {
+        outline: 3px solid rgba(var(--bs-primary-rgb), .35);
+        outline-offset: 3px;
+        border-radius: .4rem;
+    }
+</style>
+
+<div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-xl-2">
+        <a class="dashboard-stat-link" asp-page="/Requests/Approvals" aria-label="@T("index.pendingApprovals"): @Model.PendingApprovalsCount">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">@T("index.pendingApprovals")</div>
+                    <div class="fs-2 fw-semibold">@Model.PendingApprovalsCount</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-12 col-sm-6 col-xl-2">
+        <a class="dashboard-stat-link" asp-page="/Requests/QueueOverview" asp-route-view="ready" aria-label="@T("index.readyToRun"): @Model.ApprovedReadyCount">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">@T("index.readyToRun")</div>
+                    <div class="fs-2 fw-semibold">@Model.ApprovedReadyCount</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-12 col-sm-6 col-xl-2">
+        <a class="dashboard-stat-link" asp-page="/Requests/Upcoming" aria-label="@T("index.upcomingOpen"): @Model.UpcomingOpenCount">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">@T("index.upcomingOpen")</div>
+                    <div class="fs-2 fw-semibold">@Model.UpcomingOpenCount</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-12 col-sm-6 col-xl-2">
+        <a class="dashboard-stat-link" asp-page="/Requests/QueueOverview" asp-route-view="today" aria-label="@T("index.todayStarters"): @Model.TodayStartersCount">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">@T("index.todayStarters")</div>
+                    <div class="fs-2 fw-semibold">@Model.TodayStartersCount</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-12 col-sm-6 col-xl-2">
+        <a class="dashboard-stat-link" asp-page="/Requests/QueueOverview" asp-route-view="failed" aria-label="@T("index.failed"): @Model.FailedCount">
+            <div class="card h-100 shadow-sm border-danger-subtle">
+                <div class="card-body">
+                    <div class="text-danger small">@T("index.failed")</div>
+                    <div class="fs-2 fw-semibold">@Model.FailedCount</div>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-12 col-sm-6 col-xl-2">
+        <a class="dashboard-stat-link" asp-page="/Requests/QueueOverview" asp-route-view="completed" aria-label="@T("index.recentlyCompleted"): @Model.RecentlyCompletedCount">
+            <div class="card h-100 shadow-sm">
+                <div class="card-body">
+                    <div class="text-muted small">@T("index.recentlyCompleted")</div>
+                    <div class="fs-2 fw-semibold">@Model.RecentlyCompletedCount</div>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-12 col-xl-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h2 class="h5 mb-0">@T("index.upcomingList")</h2>
+            </div>
+            <div class="card-body p-0">
+                @if (Model.UpcomingItems.Count == 0)
+                {
+                    <div class="p-3 text-muted">@T("index.noUpcoming")</div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>@T("index.requestId")</th>
+                                    <th>@T("index.startOn")</th>
+                                    <th>@T("index.user")</th>
+                                    <th>@T("index.status")</th>
+                                    <th>@T("index.office")</th>
+                                    <th>@T("index.needs")</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in Model.UpcomingItems)
+                                {
+                                    var requestPage = string.Equals(item.RequestType, "UPDATE", StringComparison.OrdinalIgnoreCase)
+                                        ? "/Requests/UpdateUser"
+                                        : "/Requests/NewUser";
+                                    var needs = new List<string>();
+                                    if (!string.IsNullOrWhiteSpace(item.OfficeLicense) && !item.OfficeLicense.Contains("No office", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        needs.Add(T("index.officeLicense"));
+                                        needs.Add(T("index.mailbox"));
+                                    }
+                                    if (!string.IsNullOrWhiteSpace(item.ComputerType))
+                                    {
+                                        needs.Add(T("index.computer"));
+                                    }
+                                    if (item.AccessCard == true)
+                                    {
+                                        needs.Add(T("index.accessCard"));
+                                    }
+                                    <tr>
+                                        <td><a asp-page="@requestPage" asp-route-requestId="@item.RequestId">#@item.RequestId</a></td>
+                                        <td>@(item.ExecuteAfter?.ToString("d") ?? "-")</td>
+                                        <td>
+                                            <div>@item.DisplayName</div>
+                                            <div class="text-muted small">@item.AccountName</div>
+                                        </td>
+                                        <td><span class="badge text-bg-light">@item.Status</span></td>
+                                        <td>@(string.IsNullOrWhiteSpace(item.Office) ? "-" : item.Office)</td>
+                                        <td>
+                                            @if (needs.Count == 0)
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var need in needs.Distinct())
+                                                {
+                                                    <span class="badge text-bg-secondary me-1">@need</span>
+                                                }
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h2 class="h5 mb-0">@T("index.quickLinks")</h2>
+            </div>
+            <div class="card-body">
+                @if (links.Count == 0)
+                {
+                    <p class="text-muted mb-0">@T("index.noAvailableLinks")</p>
+                }
+                else
+                {
+                    <div class="d-grid gap-2">
+                        @foreach (var link in links)
+                        {
+                            <a class="btn btn-outline-secondary text-start" href="@link.Page">@link.Text</a>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

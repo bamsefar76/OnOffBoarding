@@ -1,0 +1,334 @@
+@page
+@model UserChangeQueueWeb.Pages.Organisation.TreeModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["org.title"] = "Organisation",
+        ["org.full"] = "Full organisation view",
+        ["org.mine"] = "Your reporting hierarchy",
+        ["org.people"] = "people",
+        ["org.searchPlaceholder"] = "Search name, title, department, office or email",
+        ["org.expandAll"] = "Expand all",
+        ["org.collapseAll"] = "Collapse all",
+        ["org.noOu"] = "No active organisational units are configured. Add at least one OU before the organisation tree can be displayed.",
+        ["org.none"] = "No active employees were found in the configured organisational units within your visible reporting hierarchy.",
+        ["org.direct"] = "direct",
+        ["org.total"] = "total",
+        ["common.open"] = "Open",
+        ["org.expand"] = "Expand",
+        ["org.collapse"] = "Collapse",
+    };
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    ViewData["Title"] = T("org.title");
+}
+
+<style>
+    .org-toolbar {
+        display: flex;
+        gap: .75rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+
+    .org-tree {
+        display: grid;
+        gap: .45rem;
+    }
+
+    .org-node {
+        --depth: 0;
+        margin-left: calc(var(--depth) * 1.65rem);
+        border: 1px solid #dee2e6;
+        border-radius: .65rem;
+        background: #fff;
+        padding: .7rem .85rem;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: .7rem;
+    }
+
+    .org-node[data-depth="0"] {
+        border-color: #adb5bd;
+        box-shadow: 0 .15rem .4rem rgba(0, 0, 0, .06);
+    }
+
+    .org-toggle {
+        width: 2rem;
+        height: 2rem;
+        border: 0;
+        border-radius: 50%;
+        background: #eef1f4;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .org-toggle-placeholder {
+        width: 2rem;
+        display: inline-block;
+    }
+
+    .org-name {
+        font-weight: 650;
+        font-size: 1.02rem;
+    }
+
+    .org-meta {
+        color: #6c757d;
+        font-size: .9rem;
+        overflow-wrap: anywhere;
+    }
+
+    .org-actions {
+        display: flex;
+        gap: .45rem;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .org-count {
+        white-space: nowrap;
+    }
+
+    .org-hidden {
+        display: none !important;
+    }
+
+    @@media (max-width: 767px) {
+        .org-node {
+            margin-left: calc(var(--depth) * .75rem);
+            grid-template-columns: auto minmax(0, 1fr);
+        }
+
+        .org-actions {
+            grid-column: 2;
+            justify-content: flex-start;
+        }
+    }
+</style>
+
+<div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+    <div>
+        <h1 class="mb-1">@T("org.title")</h1>
+        <div class="text-muted">
+            @if (Model.HasFullTreeAccess)
+            {
+                <span>@T("org.full")</span>
+            }
+            else
+            {
+                <span>@T("org.mine")</span>
+            }
+            &middot; @Model.EmployeeCount @T("org.people")
+        </div>
+    </div>
+</div>
+
+<div class="org-toolbar">
+    <input id="orgSearch" class="form-control" style="max-width: 28rem;" type="search"
+           placeholder="@T("org.searchPlaceholder")" />
+    <button id="expandAll" type="button" class="btn btn-outline-secondary">@T("org.expandAll")</button>
+    <button id="collapseAll" type="button" class="btn btn-outline-secondary">@T("org.collapseAll")</button>
+</div>
+
+@if (Model.IncludedOuCount == 0)
+{
+    <div class="alert alert-warning">
+        @T("org.noOu")
+    </div>
+}
+else if (Model.Nodes.Count == 0)
+{
+    <div class="alert alert-info">
+        @T("org.none")
+    </div>
+}
+else
+{
+    <div id="orgTree" class="org-tree">
+        @foreach (var node in Model.Nodes)
+        {
+            var searchable = string.Join(" ", new[]
+            {
+                node.DisplayName,
+                node.SamAccountName,
+                node.Title,
+                node.Department,
+                node.Company,
+                node.Office,
+                node.Mail,
+                node.EmployeeType
+            }).ToLowerInvariant();
+
+            <article class="org-node"
+                     style="--depth:@node.Depth"
+                     data-sam="@node.SamAccountName.ToLowerInvariant()"
+                     data-parent="@(node.ParentSamAccountName?.ToLowerInvariant() ?? "")"
+                     data-depth="@node.Depth"
+                     data-search="@searchable">
+                @if (node.HasChildren)
+                {
+                    <button type="button" class="org-toggle" aria-label="Collapse @node.DisplayName" aria-expanded="true">−</button>
+                }
+                else
+                {
+                    <span class="org-toggle-placeholder"></span>
+                }
+
+                <div>
+                    <div class="org-name">@node.DisplayName</div>
+                    <div class="org-meta">
+                        @if (!string.IsNullOrWhiteSpace(node.Title))
+                        {
+                            <span>@node.Title</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(node.Department))
+                        {
+                            <span> &middot; @node.Department</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(node.Office))
+                        {
+                            <span> &middot; @node.Office</span>
+                        }
+                    </div>
+                    <div class="org-meta">
+                        @if (!string.IsNullOrWhiteSpace(node.Mail))
+                        {
+                            <span>@node.Mail</span>
+                        }
+                        else
+                        {
+                            <span>@node.SamAccountName</span>
+                        }
+                    </div>
+                </div>
+
+                <div class="org-actions">
+                    @if (node.HasChildren)
+                    {
+                        <span class="badge text-bg-light org-count">
+                            @node.DirectReports @T("org.direct") / @node.TotalReports @T("org.total")
+                        </span>
+                    }
+                    <a class="btn btn-sm btn-outline-primary"
+                       asp-page="/Requests/UpdateUser"
+                       asp-route-user="@node.ObjectGuid">@T("common.open")</a>
+                </div>
+            </article>
+        }
+    </div>
+}
+
+@section Scripts {
+<script>
+(() => {
+    const expandLabel = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(T("org.expand")));
+    const collapseLabel = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(T("org.collapse")));
+    const tree = document.getElementById('orgTree');
+    if (!tree) return;
+
+    const nodes = [...tree.querySelectorAll('.org-node')];
+    const bySam = new Map(nodes.map(node => [node.dataset.sam, node]));
+    const children = new Map();
+
+    for (const node of nodes) {
+        const parent = node.dataset.parent;
+        if (!parent) continue;
+        if (!children.has(parent)) children.set(parent, []);
+        children.get(parent).push(node);
+    }
+
+    function descendants(sam) {
+        const result = [];
+        const stack = [...(children.get(sam) || [])];
+        while (stack.length) {
+            const node = stack.pop();
+            result.push(node);
+            stack.push(...(children.get(node.dataset.sam) || []));
+        }
+        return result;
+    }
+
+    function collapse(node) {
+        for (const child of descendants(node.dataset.sam)) child.classList.add('org-hidden');
+        const button = node.querySelector('.org-toggle');
+        if (button) {
+            button.textContent = '+';
+            button.setAttribute('aria-expanded', 'false');
+            button.setAttribute('aria-label', `${expandLabel} ${node.querySelector('.org-name').textContent}`);
+        }
+    }
+
+    function expand(node) {
+        for (const child of children.get(node.dataset.sam) || []) {
+            child.classList.remove('org-hidden');
+            const childButton = child.querySelector('.org-toggle');
+            if (childButton?.getAttribute('aria-expanded') === 'true') expand(child);
+        }
+        const button = node.querySelector('.org-toggle');
+        if (button) {
+            button.textContent = '−';
+            button.setAttribute('aria-expanded', 'true');
+            button.setAttribute('aria-label', `${collapseLabel} ${node.querySelector('.org-name').textContent}`);
+        }
+    }
+
+    tree.addEventListener('click', event => {
+        const button = event.target.closest('.org-toggle');
+        if (!button) return;
+        const node = button.closest('.org-node');
+        button.getAttribute('aria-expanded') === 'true' ? collapse(node) : expand(node);
+    });
+
+    document.getElementById('expandAll')?.addEventListener('click', () => {
+        for (const node of nodes) {
+            node.classList.remove('org-hidden');
+            const button = node.querySelector('.org-toggle');
+            if (button) {
+                button.textContent = '−';
+                button.setAttribute('aria-expanded', 'true');
+            }
+        }
+    });
+
+    document.getElementById('collapseAll')?.addEventListener('click', () => {
+        for (const node of nodes) {
+            if (node.dataset.depth !== '0') node.classList.add('org-hidden');
+            const button = node.querySelector('.org-toggle');
+            if (button) {
+                button.textContent = '+';
+                button.setAttribute('aria-expanded', 'false');
+            }
+        }
+    });
+
+    document.getElementById('orgSearch')?.addEventListener('input', event => {
+        const term = event.target.value.trim().toLowerCase();
+        if (!term) {
+            for (const node of nodes) node.classList.remove('org-hidden');
+            return;
+        }
+
+        const visible = new Set();
+        for (const node of nodes) {
+            if (!node.dataset.search.includes(term)) continue;
+            visible.add(node.dataset.sam);
+            let parent = node.dataset.parent;
+            while (parent) {
+                visible.add(parent);
+                parent = bySam.get(parent)?.dataset.parent || '';
+            }
+        }
+
+        for (const node of nodes) {
+            node.classList.toggle('org-hidden', !visible.has(node.dataset.sam));
+        }
+    });
+})();
+</script>
+}

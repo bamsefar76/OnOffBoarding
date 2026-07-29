@@ -1,0 +1,13 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+appsettings.json
+appsettings.Development.json
+appsettings.Production.json
+.env
+*.pfx
+*.p12
+*.pem
+*.key

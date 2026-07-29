@@ -1,0 +1,456 @@
+﻿@page
+@model UserChangeQueueWeb.Pages.Assignments.CreateModel
+@{
+    ViewData["Title"] = "Add assignment";
+}
+
+<h1>Add assignment</h1>
+<p class="text-muted">Select the label and project, find an existing person or register a new person, then add the assignment period.</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<form method="post" id="assignmentForm">
+    <input asp-for="SelectedPersonId" type="hidden" />
+    <input asp-for="SelectedArchiveRequestId" type="hidden" />
+
+    <div class="card mb-4">
+        <div class="card-header"><strong>Label and project</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label asp-for="SelectedDomain" class="form-label">Label</label>
+                    <select asp-for="SelectedDomain" class="form-select" required>
+                        <option value="">-- Select label --</option>
+                        @foreach (var domain in Model.Domains)
+                        {
+                            <option value="@domain.Domain"
+                                    data-office="@domain.Office"
+                                    data-company="@domain.Company">
+                                @domain.Label
+                            </option>
+                        }
+                    </select>
+                    <span asp-validation-for="SelectedDomain" class="text-danger"></span>
+                </div>
+
+                <div class="col-md-6">
+                    <label asp-for="ProjectId" class="form-label">Project</label>
+                    <select asp-for="ProjectId"
+                            class="form-select"
+                            disabled="@(string.IsNullOrWhiteSpace(Model.SelectedDomain))">
+                        @if (string.IsNullOrWhiteSpace(Model.SelectedDomain))
+                        {
+                            <option value="">-- Select label first --</option>
+                        }
+                        else
+                        {
+                            <option value="">-- No project selected --</option>
+                            @foreach (var project in Model.Projects)
+                            {
+                                <option value="@project.Id">@project.ProjectNumber — @project.ProjectName</option>
+                            }
+                        }
+                    </select>
+                    <span asp-validation-for="ProjectId" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header"><strong>Person</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label asp-for="GivenName" class="form-label">Given name</label>
+                    <input asp-for="GivenName" class="form-control person-search" autocomplete="off" />
+                    <span asp-validation-for="GivenName" class="text-danger"></span>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="Surname" class="form-label">Surname</label>
+                    <input asp-for="Surname" class="form-control person-search" autocomplete="off" />
+                    <span asp-validation-for="Surname" class="text-danger"></span>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="PrivateEmail" class="form-label">Private email</label>
+                    <input asp-for="PrivateEmail" class="form-control person-search" autocomplete="off" />
+                    <span asp-validation-for="PrivateEmail" class="text-danger"></span>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="MobilePhone" class="form-label">Mobile phone</label>
+                    <input asp-for="MobilePhone" class="form-control person-search" autocomplete="off" />
+                </div>
+            </div>
+
+            <div id="personSelection" class="alert alert-success mt-3 d-none">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span id="selectedPersonText"></span>
+                    <button type="button" id="clearPerson" class="btn btn-sm btn-outline-secondary">Choose another</button>
+                </div>
+            </div>
+
+            <div id="matchPanel" class="mt-3 d-none">
+                <h2 class="h6">Possible existing people</h2>
+                <div id="matchList" class="list-group"></div>
+                <button type="button" id="newPersonButton" class="btn btn-outline-primary mt-2">This is a new person</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header"><strong>Assignment details</strong></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label asp-for="ManagerSamAccountName" class="form-label">Manager</label>
+                    <select asp-for="ManagerSamAccountName" class="form-select" disabled="@(string.IsNullOrWhiteSpace(Model.SelectedDomain))">
+                        @if (string.IsNullOrWhiteSpace(Model.SelectedDomain))
+                        {
+                            <option value="">-- Select label first --</option>
+                        }
+                        else
+                        {
+                            <option value="">-- Select manager --</option>
+                            @foreach (var manager in Model.Managers)
+                            {
+                                <option value="@manager.SamAccountName">@manager.DisplayName</option>
+                            }
+                        }
+                    </select>
+                    <span asp-validation-for="ManagerSamAccountName" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="Office" class="form-label">Office</label>
+                    <input asp-for="Office" class="form-control" />
+                </div>
+                <div class="col-md-4">
+                    <label asp-for="EmployeeType" class="form-label">Employee type</label>
+                    <select asp-for="EmployeeType" class="form-select">
+                        <option value="">-- Select employee type --</option>
+                        @foreach (var employeeType in Model.EmployeeTypes)
+                        {
+                            <option value="@employeeType.Name"
+                                    data-requires-enddate="@employeeType.RequiresEndDate.ToString().ToLowerInvariant()">
+                                @employeeType.Name
+                            </option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="Department" class="form-label">Department / project</label>
+                    <select asp-for="Department" class="form-select" id="Department" disabled="@(string.IsNullOrWhiteSpace(Model.SelectedDomain))">
+                        @if (string.IsNullOrWhiteSpace(Model.SelectedDomain))
+                        {
+                            <option value="">-- Select label first --</option>
+                        }
+                        else
+                        {
+                            <option value="">-- Select project --</option>
+                            @foreach (var project in Model.Projects)
+                            {
+                                <option value="@project.ProjectName">@project.ProjectNumber — @project.ProjectName</option>
+                            }
+                        }
+                    </select>
+                    <div class="form-text">Loaded from the Projects table.</div>
+                </div>
+                <div class="col-md-6">
+                    <label asp-for="Title" class="form-label">Title</label>
+                    <select asp-for="Title" class="form-select">
+                        <option value="">-- Select title --</option>
+                        @foreach (var title in Model.Titles)
+                        {
+                            <option value="@title">@title</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label asp-for="StartDateText" class="form-label">Start date</label>
+                    <input asp-for="StartDateText"
+                           class="form-control"
+                           type="text"
+                           inputmode="numeric"
+                           autocomplete="off"
+                           placeholder="dd.mm.yyyy" />
+                    <span asp-validation-for="StartDateText" class="text-danger"></span>
+                </div>
+                <div class="col-md-3" id="endDateContainer">
+                    <label asp-for="EndDateText" class="form-label">End date</label>
+                    <input asp-for="EndDateText"
+                           class="form-control"
+                           type="text"
+                           inputmode="numeric"
+                           autocomplete="off"
+                           placeholder="dd.mm.yyyy" />
+                    <span asp-validation-for="EndDateText" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        Overlapping assignments are allowed. If this period overlaps an existing assignment, it will be flagged for IT review.
+    </div>
+
+    <button type="submit" class="btn btn-primary">Submit assignment</button>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        (() => {
+            const fields = [...document.querySelectorAll('.person-search')];
+            const matchPanel = document.getElementById('matchPanel');
+            const matchList = document.getElementById('matchList');
+            const selection = document.getElementById('personSelection');
+            const selectionText = document.getElementById('selectedPersonText');
+            const personId = document.getElementById('SelectedPersonId');
+            const archiveId = document.getElementById('SelectedArchiveRequestId');
+            const domainSelect = document.getElementById('SelectedDomain');
+            const projectSelect = document.getElementById('ProjectId');
+            const departmentSelect = document.getElementById('Department');
+            const officeInput = document.getElementById('Office');
+            const managerSelect = document.getElementById('ManagerSamAccountName');
+            const employeeTypeSelect = document.getElementById('EmployeeType');
+            const endDateContainer = document.getElementById('endDateContainer');
+            const endDateInput = document.getElementById('EndDateText');
+            const initialProjectId = '@(Model.ProjectId?.ToString() ?? "")';
+            const initialManager = '@(Model.ManagerSamAccountName ?? "")';
+            const initialDepartment = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Department ?? ""));
+            let timer;
+
+            function clearSelection() {
+                personId.value = '';
+                archiveId.value = '';
+                selection.classList.add('d-none');
+            }
+
+            function choose(item) {
+                clearSelection();
+                if (item.personId) personId.value = item.personId;
+                if (item.archiveRequestId) archiveId.value = item.archiveRequestId;
+
+                // Fill the form with the stored person/archive values so the manager
+                // can verify and, where appropriate, correct them before submitting.
+                document.getElementById('GivenName').value = item.givenName ?? '';
+                document.getElementById('Surname').value = item.surname ?? '';
+                document.getElementById('PrivateEmail').value = item.privateEmail ?? '';
+                document.getElementById('MobilePhone').value = item.mobilePhone ?? '';
+
+                selectionText.textContent = `Using existing person: ${item.displayName}`;
+                selection.classList.remove('d-none');
+                matchPanel.classList.add('d-none');
+            }
+
+            async function search() {
+                if (personId.value || archiveId.value) return;
+
+                const params = new URLSearchParams({
+                    handler: 'Search',
+                    givenName: document.getElementById('GivenName').value,
+                    surname: document.getElementById('Surname').value,
+                    privateEmail: document.getElementById('PrivateEmail').value,
+                    mobilePhone: document.getElementById('MobilePhone').value
+                });
+
+                const response = await fetch(`?${params.toString()}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (!response.ok) return;
+
+                const items = await response.json();
+                matchList.innerHTML = '';
+
+                if (!items.length) {
+                    matchPanel.classList.add('d-none');
+                    return;
+                }
+
+                for (const item of items) {
+                    const reasons = [];
+                    if (item.emailMatch) reasons.push('same private email');
+                    if (item.phoneMatch) reasons.push('same mobile number');
+                    if (item.exactNameMatch) reasons.push('matching name');
+
+                    const contact = [];
+                    if (item.privateEmail) contact.push(item.privateEmail);
+                    if (item.mobilePhone) contact.push(item.mobilePhone);
+
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'list-group-item list-group-item-action';
+                    button.innerHTML = `
+                        <strong>${escapeHtml(item.displayName)}</strong><br>
+                        <small>${escapeHtml(contact.join(' · '))}</small><br>
+                        <small class="text-muted">${escapeHtml(reasons.join(', '))}</small>`;
+                    button.addEventListener('click', () => choose(item));
+                    matchList.appendChild(button);
+                }
+
+                matchPanel.classList.remove('d-none');
+            }
+
+            function escapeHtml(value) {
+                return String(value ?? '')
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;')
+                    .replaceAll('"', '&quot;')
+                    .replaceAll("'", '&#039;');
+            }
+
+            async function loadProjects(selectedProjectId = '') {
+                const domain = domainSelect.value;
+                projectSelect.innerHTML = '';
+                departmentSelect.innerHTML = '';
+
+                if (!domain) {
+                    projectSelect.disabled = true;
+                    departmentSelect.disabled = true;
+                    projectSelect.add(new Option('-- Select label first --', ''));
+                    departmentSelect.add(new Option('-- Select label first --', ''));
+                    return;
+                }
+
+                projectSelect.disabled = true;
+                departmentSelect.disabled = true;
+                projectSelect.add(new Option('Loading projects...', ''));
+                departmentSelect.add(new Option('Loading projects...', ''));
+
+                const params = new URLSearchParams({
+                    handler: 'Projects',
+                    domain: domain
+                });
+
+                const response = await fetch(`?${params.toString()}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                projectSelect.innerHTML = '';
+                departmentSelect.innerHTML = '';
+                projectSelect.add(new Option('-- No project selected --', ''));
+                departmentSelect.add(new Option('-- Select project --', ''));
+
+                if (!response.ok) {
+                    projectSelect.add(new Option('Unable to load projects', ''));
+                    departmentSelect.add(new Option('Unable to load projects', ''));
+                    return;
+                }
+
+                const projects = await response.json();
+                for (const project of projects) {
+                    const text = project.projectNumber
+                        ? `${project.projectNumber} — ${project.projectName}`
+                        : project.projectName;
+                    const option = new Option(text, project.id);
+                    option.selected = String(project.id) === String(selectedProjectId);
+                    projectSelect.add(option);
+
+                    const departmentOption = new Option(text, project.projectName);
+                    departmentOption.selected = String(project.projectName) === String(initialDepartment);
+                    departmentSelect.add(departmentOption);
+                }
+
+                projectSelect.disabled = false;
+                departmentSelect.disabled = false;
+            }
+
+            async function loadManagers(selectedManager = '') {
+                const domain = domainSelect.value;
+                managerSelect.innerHTML = '';
+
+                if (!domain) {
+                    managerSelect.disabled = true;
+                    managerSelect.add(new Option('-- Select label first --', ''));
+                    return;
+                }
+
+                managerSelect.disabled = true;
+                managerSelect.add(new Option('Loading managers...', ''));
+
+                const params = new URLSearchParams({
+                    handler: 'Managers',
+                    domain: domain
+                });
+
+                const response = await fetch(`?${params.toString()}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                managerSelect.innerHTML = '';
+                managerSelect.add(new Option('-- Select manager --', ''));
+
+                if (!response.ok) {
+                    managerSelect.add(new Option('Unable to load managers', ''));
+                    return;
+                }
+
+                const managers = await response.json();
+                for (const manager of managers) {
+                    const option = new Option(manager.displayName, manager.samAccountName);
+                    option.selected = String(manager.samAccountName).toLowerCase() === String(selectedManager).toLowerCase();
+                    managerSelect.add(option);
+                }
+
+                managerSelect.disabled = false;
+            }
+
+            function updateEndDateVisibility() {
+                const selected = employeeTypeSelect.options[employeeTypeSelect.selectedIndex];
+                const requiresEndDate = selected?.dataset?.requiresEnddate === 'true';
+                endDateContainer.style.display = requiresEndDate ? '' : 'none';
+                endDateInput.required = requiresEndDate;
+                if (!requiresEndDate) endDateInput.value = '';
+            }
+
+            fields.forEach(field => field.addEventListener('input', () => {
+                clearTimeout(timer);
+                timer = setTimeout(search, 500);
+            }));
+
+            document.getElementById('clearPerson').addEventListener('click', () => {
+                clearSelection();
+                search();
+            });
+
+            document.getElementById('newPersonButton').addEventListener('click', () => {
+                clearSelection();
+                matchPanel.classList.add('d-none');
+            });
+
+            projectSelect.addEventListener('change', () => {
+                const selected = projectSelect.options[projectSelect.selectedIndex];
+                if (!selected || !projectSelect.value) {
+                    departmentSelect.value = '';
+                    return;
+                }
+
+                const projectText = selected.textContent ?? '';
+                const separatorIndex = projectText.indexOf('—');
+                const projectName = separatorIndex >= 0
+                    ? projectText.substring(separatorIndex + 1).trim()
+                    : projectText.trim();
+                departmentSelect.value = projectName;
+            });
+
+            domainSelect.addEventListener('change', () => {
+                const selected = domainSelect.options[domainSelect.selectedIndex];
+                const office = selected?.dataset?.office;
+                if (office && !officeInput.value) officeInput.value = office;
+                loadProjects('');
+                loadManagers('');
+            });
+
+            employeeTypeSelect.addEventListener('change', updateEndDateVisibility);
+            updateEndDateVisibility();
+
+            if (domainSelect.value) {
+                loadProjects(initialProjectId);
+                loadManagers(initialManager);
+            }
+        })();
+    </script>
+}

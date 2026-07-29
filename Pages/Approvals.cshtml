@@ -1,0 +1,228 @@
+﻿@page
+@model ApprovalsModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.all"] = "All",
+        ["common.yes"] = "Yes",
+        ["common.no"] = "No",
+        ["common.now"] = "Now",
+        ["common.filter"] = "Filter",
+        ["common.clear"] = "Clear",
+        ["common.title"] = "Title",
+        ["common.department"] = "Department",
+        ["common.company"] = "Company",
+        ["common.office"] = "Office",
+        ["common.computer"] = "Computer",
+        ["common.select"] = "Select",
+        ["field.employeeType"] = "Employee type",
+        ["field.officeLicense"] = "Office license",
+        ["field.accessCardRequired"] = "Access card",
+        ["field.executeAfter"] = "Execute after",
+        ["approvals.title"] = "Queue approvals",
+        ["approvals.help"] = "Approving a request changes its status from {0}Pending{1} to {0}Approved{1}. Rejecting a request closes it so the queue worker will not process it. The queue worker can process approved requests when {0}ExecuteAfter{1} has passed.",
+        ["approvals.requestType"] = "Request type",
+        ["approvals.requestedByContains"] = "Requested by contains",
+        ["approvals.noPending"] = "No pending requests need approval.",
+        ["approvals.approveSelected"] = "Approve selected",
+        ["approvals.rejectSelected"] = "Reject selected",
+        ["approvals.confirmRejectSelected"] = "Reject the selected request(s)? They will not be processed by the queue worker.",
+        ["approvals.confirmRejectOne"] = "Reject request {0}? It will not be processed by the queue worker.",
+        ["approvals.request"] = "Request",
+        ["approvals.user"] = "User",
+        ["approvals.details"] = "Details",
+        ["approvals.requestedBy"] = "Requested by",
+        ["approvals.created"] = "Created",
+        ["approvals.waitUntilTime"] = "Approved requests wait until this time.",
+        ["approvals.actions"] = "Approval actions",
+        ["approvals.approve"] = "Approve",
+        ["approvals.reject"] = "Reject"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    ViewData["Title"] = uiText.T("approvals.title", textFallbacks["approvals.title"]);
+
+    string T(string key)
+    {
+        return uiText.T(key, textFallbacks[key]);
+    }
+
+    string F(string key, params object[] args)
+    {
+        return string.Format(uiText.T(key, textFallbacks[key]), args);
+    }
+
+    var rejectSelectedConfirm = T("approvals.confirmRejectSelected");
+    var approvalActionsText = T("approvals.actions");
+}
+
+<h2>@T("approvals.title")</h2>
+
+<p class="text-muted">
+    @Html.Raw(F("approvals.help", "<strong>", "</strong>"))
+</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-info" role="alert">
+        @Model.StatusMessage
+    </div>
+}
+
+<form method="get" class="row gy-2 gx-3 align-items-end mb-3">
+    <div class="col-auto">
+        <label asp-for="RequestType" class="form-label">@T("approvals.requestType")</label>
+        <select asp-for="RequestType" class="form-select">
+            <option value="">@T("common.all")</option>
+            <option value="CREATE">CREATE</option>
+            <option value="UPDATE">UPDATE</option>
+        </select>
+    </div>
+    <div class="col-auto">
+        <label asp-for="RequestedBy" class="form-label">@T("approvals.requestedByContains")</label>
+        <input asp-for="RequestedBy" class="form-control" />
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-secondary">@T("common.filter")</button>
+        <a asp-page="/Requests/Approvals" class="btn btn-outline-secondary">@T("common.clear")</a>
+    </div>
+</form>
+
+@if (Model.PendingRequests.Count == 0)
+{
+    <div class="alert alert-success" role="alert">
+        @T("approvals.noPending")
+    </div>
+}
+else
+{
+    <form method="post">
+        <input type="hidden" asp-for="RequestType" />
+        <input type="hidden" asp-for="RequestedBy" />
+
+        <div class="mb-2">
+            <button type="submit" class="btn btn-primary" asp-page-handler="ApproveSelected">
+                @T("approvals.approveSelected")
+            </button>
+            <button type="submit" class="btn btn-outline-danger" asp-page-handler="RejectSelected"
+                    onclick="return confirm('@rejectSelectedConfirm');">
+                @T("approvals.rejectSelected")
+            </button>
+        </div>
+
+        <table class="table table-striped table-bordered align-middle">
+            <thead>
+                <tr>
+                    <th style="width: 3rem;">@T("common.select")</th>
+                    <th>@T("approvals.request")</th>
+                    <th>@T("approvals.user")</th>
+                    <th>@T("field.executeAfter")</th>
+                    <th>@T("approvals.details")</th>
+                    <th>@T("approvals.requestedBy")</th>
+                    <th>@T("approvals.created")</th>
+                    <th style="width: 9rem;"></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var request in Model.PendingRequests)
+            {
+                var rejectOneConfirm = F("approvals.confirmRejectOne", request.RequestId);
+                <tr class="@(request.IsDue ? "" : "table-warning")">
+                    <td>
+                        <input class="form-check-input" type="checkbox" name="SelectedRequestIds" value="@request.RequestId" />
+                    </td>
+                    <td>
+                        <div>
+                            <a href="@request.EditUrl">@request.RequestId</a>
+                        </div>
+                        <div class="small text-muted">@request.DisplayRequestType (@request.RequestType)</div>
+                    </td>
+                    <td>
+                        <div>
+                            <a href="@request.EditUrl">@request.DisplayText</a>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(request.NewUserPrincipalName))
+                        {
+                            <div class="small text-muted">@request.NewUserPrincipalName</div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(request.Mail))
+                        {
+                            <div class="small text-muted">@request.Mail</div>
+                        }
+                    </td>
+                    <td>
+                        @(request.ExecuteAfter?.ToString("g") ?? T("common.now"))
+                        @if (!request.IsDue)
+                        {
+                            <div class="small text-muted">@T("approvals.waitUntilTime")</div>
+                        }
+                    </td>
+                    <td>
+                        @if (!string.IsNullOrWhiteSpace(request.Title))
+                        {
+                            <div><strong>@T("common.title"):</strong> @request.Title</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(request.Department))
+                        {
+                            <div><strong>@T("common.department"):</strong> @request.Department</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(request.Company))
+                        {
+                            <div><strong>@T("common.company"):</strong> @request.Company</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(request.Office))
+                        {
+                            <div><strong>@T("common.office"):</strong> @request.Office</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(request.EmployeeType))
+                        {
+                            <div><strong>@T("field.employeeType"):</strong> @request.EmployeeType</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(request.ComputerType))
+                        {
+                            <div><strong>@T("common.computer"):</strong> @request.ComputerType</div>
+                        }
+                        <div><strong>@T("field.accessCardRequired"):</strong> @(request.AccessCard ? T("common.yes") : T("common.no"))</div>
+                        @if (!string.IsNullOrWhiteSpace(request.OfficeLicense))
+                        {
+                            <div><strong>@T("field.officeLicense"):</strong> @request.OfficeLicense</div>
+                        }
+                    </td>
+                    <td>@request.RequestedBy</td>
+                    <td>@(request.CreatedAt?.ToString("g"))</td>
+                    <td>
+                        <div class="btn-group" role="group" aria-label="@approvalActionsText">
+                            <button type="submit"
+                                    class="btn btn-sm btn-success"
+                                    asp-page-handler="Approve"
+                                    asp-route-requestId="@request.RequestId">
+                                @T("approvals.approve")
+                            </button>
+                            <button type="submit"
+                                    class="btn btn-sm btn-outline-danger"
+                                    asp-page-handler="Reject"
+                                    asp-route-requestId="@request.RequestId"
+                                    onclick="return confirm('@rejectOneConfirm');">
+                                @T("approvals.reject")
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+
+        <div class="mb-2">
+            <button type="submit" class="btn btn-primary" asp-page-handler="ApproveSelected">
+                @T("approvals.approveSelected")
+            </button>
+            <button type="submit" class="btn btn-outline-danger" asp-page-handler="RejectSelected"
+                    onclick="return confirm('@rejectSelectedConfirm');">
+                @T("approvals.rejectSelected")
+            </button>
+        </div>
+    </form>
+}

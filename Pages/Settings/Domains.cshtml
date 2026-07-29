@@ -1,0 +1,148 @@
+@page
+@model UserChangeQueueWeb.Pages.SettingsAdmin.DomainsModel
+@{
+    ViewData["Title"] = Model.T("domains.title", "Domains and OUs");
+}
+
+<h1>@Model.T("domains.title", "Domains and OUs")</h1>
+<p class="text-muted">@Model.T("domains.description", "Maintain the domain-to-OU/company defaults used by new user requests.")</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<div class="alert alert-warning">
+    @Model.T("domains.warning", "Changing OU affects new requests only. Existing queue rows keep their stored NewOU until edited or updated manually.")
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-8">
+                <label class="form-label" for="Search">@Model.T("domains.search", "Search")</label>
+                <input class="form-control" id="Search" name="Search" value="@Model.Search" />
+            </div>
+            <div class="col-md-4">
+                <button type="submit" class="btn btn-primary w-100">@Model.T("domains.applyFilters", "Apply filters")</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">@Model.T("domains.addDomain", "Add domain")</div>
+    <div class="card-body">
+        <form method="post" asp-page-handler="Create" class="row g-2">
+            <div class="col-md-3">
+                <label class="form-label" asp-for="NewDomain.Domain">@Model.T("domains.domain", "Domain")</label>
+                <input class="form-control" asp-for="NewDomain.Domain" placeholder="example.com" />
+            </div>
+            <div class="col-md-9">
+                <label class="form-label" asp-for="NewDomain.OU">@Model.T("domains.ou", "OU")</label>
+                <input class="form-control" asp-for="NewDomain.OU" placeholder="OU=Users,OU=Example,DC=contoso,DC=local" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" asp-for="NewDomain.Company">@Model.T("domains.company", "Company")</label>
+                <input class="form-control" asp-for="NewDomain.Company" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" asp-for="NewDomain.Office">@Model.T("domains.office", "Office")</label>
+                <input class="form-control" asp-for="NewDomain.Office" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" asp-for="NewDomain.Street">@Model.T("domains.street", "Street")</label>
+                <input class="form-control" asp-for="NewDomain.Street" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" asp-for="NewDomain.Zipcode">@Model.T("domains.zipcode", "Zip code")</label>
+                <input class="form-control" asp-for="NewDomain.Zipcode" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" asp-for="NewDomain.City">@Model.T("domains.city", "City")</label>
+                <input class="form-control" asp-for="NewDomain.City" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label" asp-for="NewDomain.Country">@Model.T("domains.country", "Country")</label>
+                <input class="form-control" asp-for="NewDomain.Country" />
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+                <button type="submit" class="btn btn-outline-primary w-100">@Model.T("domains.addDomain", "Add domain")</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (Model.Rows.Count == 0)
+{
+    <div class="alert alert-info">@Model.T("domains.noRows", "No domains found.")</div>
+}
+else
+{
+    foreach (var row in Model.Rows)
+    {
+        var collapseId = "domain_" + (row.Domain ?? "domain").Replace(".", "_").Replace("-", "_");
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>@row.Domain</strong>
+                    @if (!string.IsNullOrWhiteSpace(row.Company))
+                    {
+                        <span class="text-muted ms-2">@row.Company</span>
+                    }
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#@collapseId" aria-expanded="false" aria-controls="@collapseId">
+                    @Model.T("domains.edit", "Edit")
+                </button>
+            </div>
+            <div class="card-body collapse show" id="@collapseId">
+                <form method="post" asp-page-handler="Save" class="row g-2">
+                    <input type="hidden" name="Edit.OriginalDomain" value="@row.Domain" />
+                    <div class="col-md-3">
+                        <label class="form-label">@Model.T("domains.domain", "Domain")</label>
+                        <input class="form-control" name="Edit.Domain" value="@row.Domain" />
+                    </div>
+                    <div class="col-md-9">
+                        <label class="form-label">@Model.T("domains.ou", "OU")</label>
+                        <input class="form-control" name="Edit.OU" value="@row.OU" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">@Model.T("domains.company", "Company")</label>
+                        <input class="form-control" name="Edit.Company" value="@row.Company" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">@Model.T("domains.office", "Office")</label>
+                        <input class="form-control" name="Edit.Office" value="@row.Office" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">@Model.T("domains.street", "Street")</label>
+                        <input class="form-control" name="Edit.Street" value="@row.Street" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">@Model.T("domains.zipcode", "Zip code")</label>
+                        <input class="form-control" name="Edit.Zipcode" value="@row.Zipcode" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">@Model.T("domains.city", "City")</label>
+                        <input class="form-control" name="Edit.City" value="@row.City" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">@Model.T("domains.country", "Country")</label>
+                        <input class="form-control" name="Edit.Country" value="@row.Country" />
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill">@Model.T("domains.save", "Save")</button>
+                    </div>
+                </form>
+                <form method="post" asp-page-handler="Delete" asp-route-originalDomain="@row.Domain" class="mt-2" onsubmit="return confirm('Delete domain @row.Domain?');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">@Model.T("domains.delete", "Delete")</button>
+                </form>
+            </div>
+        </div>
+    }
+}

@@ -1,0 +1,1 @@
+move \\srvregn01\Reports\UsrMgm\output\*.csv C:\ProgramData\UserChangeQueueWeb\ProjectImport\Inbox

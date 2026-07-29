@@ -1,0 +1,5 @@
+@page
+@{
+    var target = "/Requests/NewUser" + HttpContext.Request.QueryString;
+    Response.Redirect(target, permanent: false);
+}

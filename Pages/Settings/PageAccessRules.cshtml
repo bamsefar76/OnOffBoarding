@@ -1,0 +1,181 @@
+@page
+@model UserChangeQueueWeb.Pages.Settings.PageAccessRulesModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["par.title"] = "Page access rules",
+        ["par.intro"] = "Control which Active Directory groups may open each page. Access is denied when a page has no active rule.",
+        ["par.warning"] = "Changes take effect on the next page request. Add a replacement rule before disabling the final rule for this page.",
+        ["common.search"] = "Search",
+        ["par.searchPlaceholder"] = "Page path or AD group",
+        ["common.showInactive"] = "Show inactive",
+        ["common.applyFilters"] = "Apply filters",
+        ["par.addRule"] = "Add access rule",
+        ["par.pagePath"] = "Page path",
+        ["par.adGroupName"] = "AD group name",
+        ["common.active"] = "Active",
+        ["common.add"] = "Add",
+        ["par.none"] = "No access rules match the current filters.",
+        ["par.rules"] = "rule(s)",
+        ["par.adGroup"] = "AD group",
+        ["common.status"] = "Status",
+        ["common.save"] = "Save",
+        ["common.disable"] = "Disable",
+        ["common.activate"] = "Activate",
+        ["common.delete"] = "Delete",
+        ["par.deleteConfirm"] = "Delete this page access rule permanently?",
+    };
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    ViewData["Title"] = T("par.title");
+}
+
+<h1>@T("par.title")</h1>
+<p class="text-muted">@T("par.intro")</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-success">@Model.StatusMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<div class="alert alert-warning">
+    @T("par.warning")
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-8">
+                <label class="form-label" asp-for="Search">@T("common.search")</label>
+                <input class="form-control" asp-for="Search" placeholder="@T("par.searchPlaceholder")" />
+            </div>
+            <div class="col-md-2">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" asp-for="ShowInactive" />
+                    <label class="form-check-label" asp-for="ShowInactive">@T("common.showInactive")</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">@T("common.applyFilters")</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">@T("par.addRule")</div>
+    <div class="card-body">
+        <form method="post" asp-page-handler="Create" class="row g-2 align-items-end">
+            <input type="hidden" asp-for="Search" />
+            <input type="hidden" asp-for="ShowInactive" />
+            <div class="col-md-5">
+                <label class="form-label" asp-for="NewRule.PagePath">@T("par.pagePath")</label>
+                <input class="form-control" asp-for="NewRule.PagePath" placeholder="/Settings/PageAccessRules" />
+            </div>
+            <div class="col-md-5">
+                <label class="form-label" asp-for="NewRule.AdGroupName">@T("par.adGroupName")</label>
+                <input class="form-control" asp-for="NewRule.AdGroupName" placeholder="UserChangeQueueWeb Admins" />
+            </div>
+            <div class="col-md-1">
+                <div class="form-check mb-2">
+                    <input class="form-check-input" asp-for="NewRule.Active" />
+                    <label class="form-check-label" asp-for="NewRule.Active">@T("common.active")</label>
+                </div>
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-outline-primary w-100">@T("common.add")</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (Model.Rules.Count == 0)
+{
+    <div class="alert alert-info">@T("par.none")</div>
+}
+else
+{
+    var pageGroups = Model.Rules.GroupBy(rule => rule.PagePath, StringComparer.OrdinalIgnoreCase);
+
+    foreach (var pageGroup in pageGroups)
+    {
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>@pageGroup.Key</strong>
+                <span class="badge bg-secondary">@pageGroup.Count() @T("par.rules")</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>@T("par.pagePath")</th>
+                            <th>@T("par.adGroup")</th>
+                            <th style="width: 7rem;">@T("common.status")</th>
+                            <th style="width: 20rem;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rule in pageGroup)
+                        {
+                            <tr>
+                                <td colspan="4">
+                                    <form method="post" asp-page-handler="Save" class="row g-2 align-items-center">
+                                        <input type="hidden" name="EditRule.OriginalPagePath" value="@rule.PagePath" />
+                                        <input type="hidden" name="EditRule.OriginalAdGroupName" value="@rule.AdGroupName" />
+                                        <input type="hidden" asp-for="Search" />
+                                        <input type="hidden" asp-for="ShowInactive" />
+                                        <div class="col-md-4">
+                                            <input class="form-control form-control-sm" name="EditRule.PagePath" value="@rule.PagePath" aria-label="@T("par.pagePath")" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <input class="form-control form-control-sm" name="EditRule.AdGroupName" value="@rule.AdGroupName" aria-label="@T("par.adGroupName")" />
+                                        </div>
+                                        <div class="col-md-1">
+                                            <div class="form-check">
+                                                <input type="checkbox"
+                                                       class="form-check-input"
+                                                       name="EditRule.Active"
+                                                       value="true"
+                                                       checked="@rule.Active" />
+                                                <input type="hidden" name="EditRule.Active" value="false" />
+                                                <label class="form-check-label">@T("common.active")</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 d-flex justify-content-end gap-2">
+                                            <button type="submit" class="btn btn-sm btn-primary">@T("common.save")</button>
+
+                                            <button type="submit"
+                                                    class="btn btn-sm @(rule.Active ? "btn-outline-warning" : "btn-outline-success")"
+                                                    asp-page-handler="SetActive"
+                                                    asp-route-pagePath="@rule.PagePath"
+                                                    asp-route-adGroupName="@rule.AdGroupName"
+                                                    asp-route-active="@(!rule.Active)">
+                                                @(rule.Active ? T("common.disable") : T("common.activate"))
+                                            </button>
+
+                                            <button type="submit"
+                                                    class="btn btn-sm btn-outline-danger"
+                                                    asp-page-handler="Delete"
+                                                    asp-route-pagePath="@rule.PagePath"
+                                                    asp-route-adGroupName="@rule.AdGroupName"
+                                                    onclick="return confirm('@T("par.deleteConfirm")');">
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}

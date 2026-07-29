@@ -1,0 +1,310 @@
+﻿@page
+@model UserChangeQueueWeb.Pages.Settings.AccessCardGroupsModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["ac.title"] = "Access-card groups",
+        ["ac.intro"] = "Maintain the physical access groups available for each site. Groups may be restricted to members of selected Active Directory groups.",
+        ["ac.groups"] = "Groups",
+        ["ac.newGroup"] = "New group",
+        ["common.search"] = "Search",
+        ["ac.searchPlaceholder"] = "Site, name, external group or description",
+        ["ac.site"] = "Site",
+        ["ac.allSites"] = "All sites",
+        ["common.showInactive"] = "Show inactive",
+        ["common.filter"] = "Filter",
+        ["common.clear"] = "Clear",
+        ["ac.none"] = "No access-card groups found.",
+        ["common.active"] = "Active",
+        ["common.inactive"] = "Inactive",
+        ["ac.restricted"] = "Restricted",
+        ["ac.availableAll"] = "Available to all",
+        ["ac.usedBy"] = "Used by",
+        ["ac.requests"] = "request(s)",
+        ["ac.editGroup"] = "Edit access-card group",
+        ["ac.newAccessGroup"] = "New access-card group",
+        ["ac.sortOrder"] = "Sort order",
+        ["ac.displayName"] = "Display name",
+        ["ac.externalName"] = "Access-system group name",
+        ["common.description"] = "Description",
+        ["ac.saveGroup"] = "Save group",
+        ["common.disable"] = "Disable",
+        ["common.activate"] = "Activate",
+        ["common.delete"] = "Delete",
+        ["ac.deleteConfirm"] = "Permanently delete this access-card group and all its AD access rules?",
+        ["ac.who"] = "Who may select this group?",
+        ["ac.restrictedHelp"] = "This is a restricted group. The logged-in user must belong to at least one active AD group below.",
+        ["ac.openHelp"] = "No active AD access rules exist. This group is available to everyone who can create users.",
+        ["ac.noRules"] = "No AD access rules configured.",
+        ["ac.adGroup"] = "AD group",
+        ["common.status"] = "Status",
+        ["common.actions"] = "Actions",
+        ["common.save"] = "Save",
+        ["ac.addRule"] = "Add AD access rule",
+        ["ac.adGroupName"] = "AD group name",
+        ["ac.changed"] = "Changed",
+        ["ac.groupFormatHelp"] = "Use the same group-name format already used in Page Access Rules.",
+    };
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    ViewData["Title"] = T("ac.title");
+}
+
+<h2>@T("ac.title")</h2>
+<p class="text-muted">
+    @T("ac.intro")
+</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-info">@Model.StatusMessage</div>
+}
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<div class="row g-4">
+    <div class="col-12 col-xl-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>@T("ac.groups")</span>
+                <a class="btn btn-sm btn-primary"
+                   asp-page-handler="New"
+                   asp-route-search="@Model.Search"
+                   asp-route-site="@Model.Site"
+                   asp-route-showInactive="@Model.ShowInactive">@T("ac.newGroup")</a>
+            </div>
+            <div class="card-body">
+                <form method="get" class="mb-3">
+                    <div class="mb-2">
+                        <label asp-for="Search" class="form-label">@T("common.search")</label>
+                        <input asp-for="Search" class="form-control" placeholder="@T("ac.searchPlaceholder")" />
+                    </div>
+                    <div class="mb-2">
+                        <label asp-for="Site" class="form-label">@T("ac.site")</label>
+                        <select asp-for="Site" class="form-select">
+                            <option value="">@T("ac.allSites")</option>
+                            @foreach (var site in Model.Sites)
+                            {
+                                <option value="@site">@site</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input asp-for="ShowInactive" class="form-check-input" />
+                        <label asp-for="ShowInactive" class="form-check-label">@T("common.showInactive")</label>
+                    </div>
+                    <button type="submit" class="btn btn-secondary btn-sm">@T("common.filter")</button>
+                    <a asp-page="/Settings/AccessCardGroups" class="btn btn-outline-secondary btn-sm">@T("common.clear")</a>
+                </form>
+
+                @if (Model.Groups.Count == 0)
+                {
+                    <div class="alert alert-warning mb-0">@T("ac.none")</div>
+                }
+                else
+                {
+                    <div class="list-group">
+                        @foreach (var group in Model.Groups)
+                        {
+                            var selected = Model.SelectedGroupId == group.Id;
+                            <a class="list-group-item list-group-item-action @(selected ? "active" : "")"
+                               asp-page="/Settings/AccessCardGroups"
+                               asp-route-id="@group.Id"
+                               asp-route-search="@Model.Search"
+                               asp-route-site="@Model.Site"
+                               asp-route-showInactive="@Model.ShowInactive">
+                                <div class="d-flex justify-content-between gap-2">
+                                    <strong>@group.DisplayName</strong>
+                                    <span class="badge @(group.Active ? "bg-success" : "bg-secondary")">@(group.Active ? T("common.active") : T("common.inactive"))</span>
+                                </div>
+                                <div class="small @(selected ? "text-white-50" : "text-muted")">@group.Site · @group.ExternalGroupName</div>
+                                <div class="mt-1">
+                                    <span class="badge @(group.Restricted ? "bg-warning text-dark" : "bg-info text-dark")">
+                                        @(group.Restricted ? $"{T("ac.restricted")} ({group.ActiveRuleCount})" : T("ac.availableAll"))
+                                    </span>
+                                    @if (group.UsageCount > 0)
+                                    {
+                                        <span class="badge bg-secondary">@T("ac.usedBy") @group.UsageCount @T("ac.requests")</span>
+                                    }
+                                </div>
+                            </a>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-8">
+        <div class="card mb-4">
+            <div class="card-header">@(Model.EditGroup.Id > 0 ? T("ac.editGroup") : T("ac.newAccessGroup"))</div>
+            <div class="card-body">
+                <form method="post" asp-page-handler="SaveGroup">
+                    <input type="hidden" asp-for="EditGroup.Id" />
+                    <input type="hidden" asp-for="Search" />
+                    <input type="hidden" asp-for="Site" />
+                    <input type="hidden" asp-for="ShowInactive" />
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label asp-for="EditGroup.Site" class="form-label">@T("ac.site")</label>
+                            <input asp-for="EditGroup.Site" class="form-control" list="knownSites" />
+                            <datalist id="knownSites">
+                                @foreach (var site in Model.Sites)
+                                {
+                                    <option value="@site"></option>
+                                }
+                            </datalist>
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="EditGroup.SortOrder" class="form-label">@T("ac.sortOrder")</label>
+                            <input asp-for="EditGroup.SortOrder" type="number" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="EditGroup.DisplayName" class="form-label">@T("ac.displayName")</label>
+                            <input asp-for="EditGroup.DisplayName" class="form-control" />
+                        </div>
+                        <div class="col-md-6">
+                            <label asp-for="EditGroup.ExternalGroupName" class="form-label">@T("ac.externalName")</label>
+                            <input asp-for="EditGroup.ExternalGroupName" class="form-control" />
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="EditGroup.Description" class="form-label">@T("common.description")</label>
+                            <textarea asp-for="EditGroup.Description" class="form-control" rows="3"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                <input asp-for="EditGroup.Active" class="form-check-input" />
+                                <label asp-for="EditGroup.Active" class="form-check-label">@T("common.active")</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3 d-flex gap-2 flex-wrap">
+                        <button type="submit" class="btn btn-primary">@T("ac.saveGroup")</button>
+                        @if (Model.EditGroup.Id > 0)
+                        {
+                            <button type="submit"
+                                    class="btn @(Model.EditGroup.Active ? "btn-outline-warning" : "btn-outline-success")"
+                                    asp-page-handler="SetGroupActive"
+                                    asp-route-id="@Model.EditGroup.Id"
+                                    asp-route-active="@(!Model.EditGroup.Active)">
+                                @(Model.EditGroup.Active ? T("common.disable") : T("common.activate"))
+                            </button>
+                            <button type="submit"
+                                    class="btn btn-outline-danger"
+                                    asp-page-handler="DeleteGroup"
+                                    asp-route-id="@Model.EditGroup.Id"
+                                    onclick="return confirm('@T("ac.deleteConfirm")');">
+                                Delete
+                            </button>
+                        }
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        @if (Model.EditGroup.Id > 0)
+        {
+            <div class="card">
+                <div class="card-header">@T("ac.who")</div>
+                <div class="card-body">
+                    <div class="alert alert-secondary">
+                        @if (Model.AccessRules.Any(r => r.Active))
+                        {
+                            <span>@T("ac.restrictedHelp")</span>
+                        }
+                        else
+                        {
+                            <span>@T("ac.openHelp")</span>
+                        }
+                    </div>
+
+                    @if (Model.AccessRules.Count == 0)
+                    {
+                        <p class="text-muted">@T("ac.noRules")</p>
+                    }
+                    else
+                    {
+                        <div class="table-responsive mb-4">
+                            <table class="table table-sm align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>@T("ac.adGroup")</th>
+                                        <th>@T("common.status")</th>
+                                        <th>@T("ac.changed")</th>
+                                        <th class="text-end">@T("common.actions")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var rule in Model.AccessRules)
+                                    {
+                                        <tr>
+                                            <td><code>@rule.AdGroupName</code></td>
+                                            <td><span class="badge @(rule.Active ? "bg-success" : "bg-secondary")">@(rule.Active ? T("common.active") : T("common.inactive"))</span></td>
+                                            <td class="small text-muted">
+                                                @if (rule.UpdatedAt.HasValue)
+                                                {
+                                                    <span>@rule.UpdatedAt.Value.ToString("g") @rule.UpdatedBy</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>@rule.CreatedAt.ToString("g") @rule.CreatedBy</span>
+                                                }
+                                            </td>
+                                            <td class="text-end">
+                                                <form method="post" class="d-inline">
+                                                    <button type="submit"
+                                                            class="btn btn-sm @(rule.Active ? "btn-outline-warning" : "btn-outline-success")"
+                                                            asp-page-handler="SetAccessRuleActive"
+                                                            asp-route-id="@Model.EditGroup.Id"
+                                                            asp-route-ruleId="@rule.Id"
+                                                            asp-route-active="@(!rule.Active)">
+                                                        @(rule.Active ? "Disable" : "Activate")
+                                                    </button>
+                                                    <button type="submit"
+                                                            class="btn btn-sm btn-outline-danger"
+                                                            asp-page-handler="DeleteAccessRule"
+                                                            asp-route-id="@Model.EditGroup.Id"
+                                                            asp-route-ruleId="@rule.Id"
+                                                            onclick="return confirm('Delete this AD access rule?');">
+                                                        Delete
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    <h5>@T("ac.addRule")</h5>
+                    <form method="post" asp-page-handler="AddAccessRule" asp-route-id="@Model.EditGroup.Id">
+                        <div class="row g-3 align-items-end">
+                            <div class="col-md-8">
+                                <label asp-for="NewAccessRule.AdGroupName" class="form-label">@T("ac.adGroupName")</label>
+                                <input asp-for="NewAccessRule.AdGroupName" class="form-control" placeholder="DOMAIN\Group name or group name" />
+                                <div class="form-text">@T("ac.groupFormatHelp")</div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-check mb-2">
+                                    <input asp-for="NewAccessRule.Active" class="form-check-input" />
+                                    <label asp-for="NewAccessRule.Active" class="form-check-label">@T("common.active")</label>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary w-100">@T("common.add")</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+</div>

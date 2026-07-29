@@ -1,0 +1,77 @@
+@page
+@model UserChangeQueueWeb.Pages.TemporaryAccess.IndexModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+@{
+    ViewData["Title"] = "Temporary access";
+    var fallbacks = new Dictionary<string,string>
+    {
+        ["ta.title"]="Temporary access", ["ta.intro"]="Add yourself temporarily to approved Active Directory groups.",
+        ["ta.duration"]="Duration", ["ta.days"]="days", ["ta.reason"]="Reason", ["ta.reasonRequired"]="Reason required",
+        ["ta.request"]="Add access", ["ta.renew"]="Renew", ["ta.remove"]="Remove now", ["ta.expires"]="Expires",
+        ["ta.pendingAdd"]="Waiting to be added", ["ta.processingAdd"]="Adding", ["ta.active"]="Active",
+        ["ta.pendingRemove"]="Waiting to be removed", ["ta.processingRemove"]="Removing", ["ta.none"]="No temporary access groups are available.",
+        ["ta.history"]="Recent requests", ["ta.requested"]="Requested", ["ta.status"]="Status", ["ta.error"]="Last error"
+    };
+    var text = await UiTextService.GetTextsAsync(HttpContext, fallbacks);
+    string T(string key) => text.T(key, fallbacks[key]);
+}
+<h1>@T("ta.title")</h1>
+<p class="text-muted">@T("ta.intro")</p>
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage)) { <div class="alert alert-success">@Model.StatusMessage</div> }
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage)) { <div class="alert alert-danger">@Model.ErrorMessage</div> }
+
+@if (Model.Groups.Count == 0)
+{
+    <div class="alert alert-secondary">@T("ta.none")</div>
+}
+else
+{
+    <div class="row g-3">
+    @foreach (var group in Model.Groups)
+    {
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title">@group.DisplayName</h5>
+                    @if (!string.IsNullOrWhiteSpace(group.Description)) { <p class="card-text">@group.Description</p> }
+                    <p class="small text-muted mb-3">@T("ta.duration"): @group.DurationDays @T("ta.days")</p>
+                    @if (group.MembershipId is null)
+                    {
+                        <form method="post" asp-page-handler="Request">
+                            <input type="hidden" name="GroupId" value="@group.Id" />
+                            <label class="form-label">@T("ta.reason") @if(group.RequireReason){<span class="text-danger">*</span>}</label>
+                            <textarea name="Reason" class="form-control mb-2" rows="2" required="@(group.RequireReason ? "required" : null)"></textarea>
+                            <button class="btn btn-primary" type="submit">@T("ta.request")</button>
+                        </form>
+                    }
+                    else
+                    {
+                        var statusText = group.Status switch { "PendingAdd" => T("ta.pendingAdd"), "ProcessingAdd" => T("ta.processingAdd"), "Active" => T("ta.active"), "PendingRemove" => T("ta.pendingRemove"), "ProcessingRemove" => T("ta.processingRemove"), _ => group.Status };
+                        <div class="alert alert-info py-2"><strong>@statusText</strong>@if(group.ExpiresAt.HasValue){<span> — @T("ta.expires"): @group.ExpiresAt.Value.ToString("g")</span>}</div>
+                        @if (!string.IsNullOrWhiteSpace(group.LastError)) { <div class="alert alert-danger py-2">@group.LastError</div> }
+                        <div class="d-flex gap-2">
+                        @if (group.Status == "Active" && group.AllowRenewal)
+                        {
+                            <form method="post" asp-page-handler="Renew"><input type="hidden" name="id" value="@group.MembershipId" /><button class="btn btn-outline-primary" type="submit">@T("ta.renew")</button></form>
+                        }
+                        @if (group.Status is "PendingAdd" or "Active")
+                        {
+                            <form method="post" asp-page-handler="Remove"><input type="hidden" name="id" value="@group.MembershipId" /><button class="btn btn-outline-danger" type="submit">@T("ta.remove")</button></form>
+                        }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+    </div>
+}
+
+@if (Model.History.Count > 0)
+{
+    <h2 class="h4 mt-5">@T("ta.history")</h2>
+    <div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Group</th><th>@T("ta.status")</th><th>@T("ta.requested")</th><th>@T("ta.expires")</th><th>@T("ta.error")</th></tr></thead><tbody>
+    @foreach(var item in Model.History){<tr><td>@item.GroupName</td><td>@item.Status</td><td>@item.RequestedAt.ToString("g")</td><td>@item.ExpiresAt.ToString("g")</td><td class="text-danger">@item.LastError</td></tr>}
+    </tbody></table></div>
+}

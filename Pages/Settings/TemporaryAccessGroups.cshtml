@@ -1,0 +1,30 @@
+@page
+@model UserChangeQueueWeb.Pages.Settings.TemporaryAccessGroupsModel
+@{ ViewData["Title"]="Temporary access groups"; }
+<h1>Temporary access groups</h1>
+<p class="text-muted">Maintain the AD groups users may join temporarily.</p>
+@if(!string.IsNullOrWhiteSpace(Model.StatusMessage)){<div class="alert alert-success">@Model.StatusMessage</div>}
+@if(!string.IsNullOrWhiteSpace(Model.ErrorMessage)){<div class="alert alert-danger">@Model.ErrorMessage</div>}
+<div class="row g-4">
+<div class="col-lg-5">
+<div class="card"><div class="card-header">Configured groups</div><div class="list-group list-group-flush">
+<a class="list-group-item list-group-item-action" asp-page="/Settings/TemporaryAccessGroups">+ New group</a>
+@foreach(var g in Model.Groups){<a class="list-group-item list-group-item-action @(Model.Id==g.Id?"active":"")" asp-route-id="@g.Id"><div class="d-flex justify-content-between"><strong>@g.DisplayName</strong><span class="badge bg-secondary">@g.CurrentCount</span></div><small>@g.AdGroupName — @g.DurationDays days — @(g.Active?"Active":"Inactive")</small></a>}
+</div></div>
+</div>
+<div class="col-lg-7">
+<div class="card"><div class="card-header">@(Model.Edit.Id>0?"Edit group":"New group")</div><div class="card-body">
+<form method="post" asp-page-handler="Save"><input type="hidden" asp-for="Edit.Id" />
+<div class="row g-3"><div class="col-md-6"><label class="form-label" asp-for="Edit.DisplayName">Display name</label><input class="form-control" asp-for="Edit.DisplayName" /></div>
+<div class="col-md-6"><label class="form-label" asp-for="Edit.AdGroupName">AD group name</label><input class="form-control" asp-for="Edit.AdGroupName" /></div>
+<div class="col-12"><label class="form-label" asp-for="Edit.Description">Description</label><textarea class="form-control" rows="3" asp-for="Edit.Description"></textarea></div>
+<div class="col-md-4"><label class="form-label" asp-for="Edit.DurationDays">Duration (days)</label><input type="number" min="1" max="365" class="form-control" asp-for="Edit.DurationDays" /></div>
+<div class="col-md-4"><label class="form-label" asp-for="Edit.SortOrder">Sort order</label><input type="number" class="form-control" asp-for="Edit.SortOrder" /></div>
+<div class="col-12"><div class="form-check"><input class="form-check-input" asp-for="Edit.AllowRenewal"/><label class="form-check-label" asp-for="Edit.AllowRenewal">Allow renewal</label></div><div class="form-check"><input class="form-check-input" asp-for="Edit.RequireReason"/><label class="form-check-label" asp-for="Edit.RequireReason">Require a reason</label></div><div class="form-check"><input class="form-check-input" asp-for="Edit.Active"/><label class="form-check-label" asp-for="Edit.Active">Active</label></div></div></div>
+<button class="btn btn-primary mt-3" type="submit">Save group</button></form>
+</div></div></div></div>
+
+<h2 class="h4 mt-5">Memberships and history</h2>
+<div class="table-responsive"><table class="table table-sm align-middle"><thead><tr><th>Group</th><th>User</th><th>Status</th><th>Requested</th><th>Expires</th><th>Error</th><th></th></tr></thead><tbody>
+@foreach(var m in Model.Members){<tr><td>@m.GroupName</td><td>@m.UserLoginName</td><td>@m.Status</td><td>@m.RequestedAt.ToString("g")</td><td>@m.ExpiresAt.ToString("g")</td><td class="text-danger">@m.LastError</td><td>@if(m.Status is "Active" or "PendingAdd" or "ProcessingAdd"){<form method="post" asp-page-handler="EndNow"><input type="hidden" name="membershipId" value="@m.Id"/><input type="hidden" name="Id" value="@Model.Id"/><button class="btn btn-sm btn-outline-danger">End now</button></form>}</td></tr>}
+</tbody></table></div>

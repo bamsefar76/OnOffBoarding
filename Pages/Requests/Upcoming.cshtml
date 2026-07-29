@@ -1,0 +1,162 @@
+@page
+@model UserChangeQueueWeb.Pages.UpcomingChangesModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["upcoming.title"] = "Upcoming user changes",
+        ["upcoming.subtitle"] = "Open user requests and what IT needs to prepare.",
+        ["upcoming.filter.office"] = "Office",
+        ["upcoming.filter.status"] = "Status",
+        ["upcoming.filter.requestType"] = "Request type",
+        ["upcoming.filter.search"] = "Search",
+        ["upcoming.filter.showPast"] = "Show past start dates",
+        ["upcoming.filter.allOffices"] = "All offices",
+        ["upcoming.filter.allStatuses"] = "All open statuses",
+        ["upcoming.filter.allTypes"] = "All request types",
+        ["upcoming.filter.apply"] = "Apply",
+        ["upcoming.filter.clear"] = "Clear",
+        ["upcoming.empty"] = "No upcoming open requests match the selected filters.",
+        ["upcoming.col.startOn"] = "Start on",
+        ["upcoming.col.eligible"] = "Worker eligible",
+        ["upcoming.col.type"] = "Type",
+        ["upcoming.col.user"] = "User",
+        ["upcoming.col.office"] = "Office",
+        ["upcoming.col.status"] = "Status",
+        ["upcoming.col.needs"] = "Needs",
+        ["upcoming.col.requestedBy"] = "Requested by",
+        ["upcoming.badge.accessCard"] = "Access card",
+        ["upcoming.badge.mailbox"] = "Mailbox",
+        ["upcoming.badge.privateEmailMissing"] = "Private email missing",
+        ["upcoming.badge.officeLicense"] = "Office license",
+        ["upcoming.badge.computer"] = "Computer",
+        ["upcoming.badge.groups"] = "Groups",
+        ["upcoming.badge.noSpecialNeeds"] = "No special needs",
+        ["upcoming.link.open"] = "Open"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    ViewData["Title"] = T("upcoming.title");
+}
+
+<h1>@T("upcoming.title")</h1>
+<p class="text-muted">@T("upcoming.subtitle")</p>
+
+<form method="get" class="card mb-3">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+                <label asp-for="Office" class="form-label">@T("upcoming.filter.office")</label>
+                <select asp-for="Office" class="form-select">
+                    <option value="">@T("upcoming.filter.allOffices")</option>
+                    @foreach (var office in Model.OfficeOptions)
+                    {
+                        <option value="@office">@office</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label asp-for="Status" class="form-label">@T("upcoming.filter.status")</label>
+                <select asp-for="Status" class="form-select">
+                    <option value="">@T("upcoming.filter.allStatuses")</option>
+                    @foreach (var status in Model.StatusOptions)
+                    {
+                        <option value="@status">@status</option>
+                    }
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label asp-for="RequestType" class="form-label">@T("upcoming.filter.requestType")</label>
+                <select asp-for="RequestType" class="form-select">
+                    <option value="">@T("upcoming.filter.allTypes")</option>
+                    <option value="CREATE">CREATE</option>
+                    <option value="UPDATE">UPDATE</option>
+                </select>
+            </div>
+
+            <div class="col-md-3">
+                <label asp-for="Search" class="form-label">@T("upcoming.filter.search")</label>
+                <input asp-for="Search" class="form-control" />
+            </div>
+
+            <div class="col-md-2">
+                <div class="form-check mb-2">
+                    <input asp-for="ShowPast" class="form-check-input" />
+                    <label asp-for="ShowPast" class="form-check-label">@T("upcoming.filter.showPast")</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-3 d-flex gap-2">
+            <button type="submit" class="btn btn-primary">@T("upcoming.filter.apply")</button>
+            <a asp-page="/Requests/Upcoming" class="btn btn-outline-secondary">@T("upcoming.filter.clear")</a>
+        </div>
+    </div>
+</form>
+
+@if (!Model.Items.Any())
+{
+    <div class="alert alert-info">@T("upcoming.empty")</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>@T("upcoming.col.startOn")</th>
+                    <th>@T("upcoming.col.eligible")</th>
+                    <th>@T("upcoming.col.type")</th>
+                    <th>@T("upcoming.col.user")</th>
+                    <th>@T("upcoming.col.office")</th>
+                    <th>@T("upcoming.col.status")</th>
+                    <th>@T("upcoming.col.needs")</th>
+                    <th>@T("upcoming.col.requestedBy")</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Items)
+                {
+                    <tr>
+                        <td>@item.StartOnText</td>
+                        <td>@item.WorkerEligibleText</td>
+                        <td><span class="badge bg-secondary">@item.RequestType</span></td>
+                        <td>
+                            <strong>@item.DisplayName</strong><br />
+                            <span class="text-muted small">@item.AccountName</span>
+                        </td>
+                        <td>@item.Office</td>
+                        <td><span class="badge @item.StatusBadgeClass">@item.Status</span></td>
+                        <td>
+                            @if (!item.Needs.Any())
+                            {
+                                <span class="badge bg-light text-dark border">@T("upcoming.badge.noSpecialNeeds")</span>
+                            }
+                            else
+                            {
+                                foreach (var need in item.Needs)
+                                {
+                                    <span class="badge @need.BadgeClass me-1 mb-1" title="@need.Tooltip">@need.Label</span>
+                                }
+                            }
+                        </td>
+                        <td>@item.RequestedBy</td>
+                        <td class="text-end">
+                            @if (Model.CanOpenRequestDetails)
+                            {
+                                <a class="btn btn-sm btn-outline-primary" href="@item.EditUrl">@T("upcoming.link.open")</a>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

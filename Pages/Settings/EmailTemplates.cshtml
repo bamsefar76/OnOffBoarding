@@ -1,0 +1,365 @@
+﻿@page
+@model UserChangeQueueWeb.Pages.Settings.EmailTemplatesModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["et.title"] = "Email templates",
+        ["et.intro"] = "Manage domain- and language-specific email templates and embedded images.",
+        ["et.add"] = "Add template",
+        ["et.templateName"] = "Template name",
+        ["et.domain"] = "Domain",
+        ["et.language"] = "Language",
+        ["et.subject"] = "Subject",
+        ["common.active"] = "Active",
+        ["common.yes"] = "Yes",
+        ["common.no"] = "No",
+        ["et.create"] = "Create template",
+        ["et.edit"] = "Edit template",
+        ["et.htmlBody"] = "HTML body",
+        ["et.htmlHelp"] = "Use CID references for embedded images. ContentId must match an active image row below.",
+        ["et.plainBody"] = "Plain-text body",
+        ["et.save"] = "Save template",
+        ["common.cancel"] = "Cancel",
+        ["et.copy"] = "Copy template",
+        ["et.newDomain"] = "New domain",
+        ["et.copyButton"] = "Copy",
+        ["et.copyActive"] = "New template is active",
+        ["et.copyImages"] = "Copy image mappings for this domain",
+        ["et.copyHelp"] = "The subject, HTML body and plain-text body are copied from the selected template. Choose a different domain and/or language to avoid a duplicate.",
+        ["et.images"] = "Embedded images",
+        ["et.imagesHelp"] = "Images are attached as CID resources. Domain-specific rows override wildcard rows. Use * as a fallback domain.",
+        ["et.contentId"] = "ContentId",
+        ["et.imagePath"] = "Image path",
+        ["et.mimeType"] = "Mime type",
+        ["common.remove"] = "Remove",
+        ["et.removeConfirm"] = "Remove this image mapping?",
+        ["et.addImage"] = "Add image mapping",
+        ["et.placeholders"] = "Placeholders",
+        ["et.placeholderHelp"] = "Supported placeholder formats:",
+        ["et.doubleBrace"] = "Double-brace variants also work in the worker.",
+        ["et.select"] = "Select a template to edit, or add a new one.",
+        ["et.templates"] = "Templates",
+        ["et.filters"] = "Filters",
+        ["et.allLanguages"] = "All languages",
+        ["et.allDomains"] = "All domains",
+        ["et.templateType"] = "Template type",
+        ["et.allTypes"] = "All template types",
+        ["et.applyFilters"] = "Apply filters",
+        ["et.clearFilters"] = "Clear",
+        ["et.noMatches"] = "No templates match the selected filters.",
+        ["et.fallbackHelp"] = "Use * as the fallback template.",
+        ["common.inactive"] = "Inactive",
+    };
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    ViewData["Title"] = T("et.title");
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h1 class="mb-1">@T("et.title")</h1>
+        <p class="text-muted mb-0">@T("et.intro")</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <div class="alert alert-success">@Model.Message</div>
+}
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-header"><strong>@T("et.filters")</strong></div>
+            <div class="card-body">
+                <form method="get" asp-page="/Settings/EmailTemplates">
+                    <div class="mb-3">
+                        <label class="form-label" for="languageFilter">@T("et.language")</label>
+                        <select class="form-select" id="languageFilter" name="language">
+                            <option value="">@T("et.allLanguages")</option>
+                            @foreach (var language in Model.AvailableLanguages)
+                            {
+                                <option value="@language" selected="@(string.Equals(Model.LanguageFilter, language, StringComparison.OrdinalIgnoreCase))">@language</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="domainFilter">@T("et.domain")</label>
+                        <select class="form-select" id="domainFilter" name="domain">
+                            <option value="">@T("et.allDomains")</option>
+                            @foreach (var domain in Model.AvailableDomains)
+                            {
+                                <option value="@domain" selected="@(string.Equals(Model.DomainFilter, domain, StringComparison.OrdinalIgnoreCase))">@domain</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="templateTypeFilter">@T("et.templateType")</label>
+                        <select class="form-select" id="templateTypeFilter" name="type">
+                            <option value="">@T("et.allTypes")</option>
+                            @foreach (var templateType in Model.AvailableTemplateTypes)
+                            {
+                                <option value="@templateType" selected="@(string.Equals(Model.TemplateTypeFilter, templateType, StringComparison.OrdinalIgnoreCase))">@templateType</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">@T("et.applyFilters")</button>
+                        <a class="btn btn-outline-secondary" asp-page="/Settings/EmailTemplates">@T("et.clearFilters")</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <strong>@T("et.templates")</strong>
+                <span class="badge bg-secondary">@Model.Templates.Count</span>
+            </div>
+            <div class="list-group list-group-flush">
+                @if (Model.Templates.Count == 0)
+                {
+                    <div class="list-group-item text-muted">@T("et.noMatches")</div>
+                }
+                @foreach (var template in Model.Templates)
+                {
+                    var activeClass = template.Id == Model.SelectedTemplateId ? " active" : "";
+                    <a class="list-group-item list-group-item-action@activeClass"
+                       asp-page="/Settings/EmailTemplates"
+                       asp-route-id="@template.Id"
+                       asp-route-language="@Model.LanguageFilter"
+                       asp-route-domain="@Model.DomainFilter"
+                       asp-route-type="@Model.TemplateTypeFilter">
+                        <div class="d-flex justify-content-between">
+                            <strong>@template.TemplateName</strong>
+                            <span>@template.Domain · @template.LanguageCode</span>
+                        </div>
+                        <div class="small text-muted text-truncate">@template.Subject</div>
+                        @if (!template.Active)
+                        {
+                            <span class="badge bg-warning text-dark mt-1">@T("common.inactive")</span>
+                        }
+                    </a>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><strong>@T("et.add")</strong></div>
+            <div class="card-body">
+                <form method="post" asp-page-handler="CreateTemplate">
+                    <div class="mb-3">
+                        <label class="form-label" asp-for="NewTemplate.TemplateName">@T("et.templateName")</label>
+                        <input class="form-control" asp-for="NewTemplate.TemplateName" placeholder="Welcome" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" asp-for="NewTemplate.Domain">@T("et.domain")</label>
+                        <input class="form-control" asp-for="NewTemplate.Domain" placeholder="example.com or *" />
+                        <div class="form-text">@T("et.fallbackHelp")</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" asp-for="NewTemplate.LanguageCode">@T("et.language")</label>
+                        <input class="form-control" asp-for="NewTemplate.LanguageCode" placeholder="en" maxlength="10" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" asp-for="NewTemplate.Subject">@T("et.subject")</label>
+                        <input class="form-control" asp-for="NewTemplate.Subject" />
+                    </div>
+                    <button type="submit" class="btn btn-primary">@T("et.add")</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        @if (Model.EditTemplate.Id > 0)
+        {
+            <div class="card mb-4">
+                <div class="card-header"><strong>@T("et.edit")</strong></div>
+                <div class="card-body">
+                    <form method="post" asp-page-handler="SaveTemplate">
+                        <input type="hidden" asp-for="EditTemplate.Id" />
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label" asp-for="EditTemplate.TemplateName">@T("et.templateName")</label>
+                                <input class="form-control" asp-for="EditTemplate.TemplateName" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" asp-for="EditTemplate.Domain">@T("et.domain")</label>
+                                <input class="form-control" asp-for="EditTemplate.Domain" placeholder="exacmple.com or *" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" asp-for="EditTemplate.LanguageCode">@T("et.language")</label>
+                                <input class="form-control" asp-for="EditTemplate.LanguageCode" maxlength="10" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" asp-for="EditTemplate.Subject">@T("et.subject")</label>
+                                <input class="form-control" asp-for="EditTemplate.Subject" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" asp-for="EditTemplate.HtmlBody">@T("et.htmlBody")</label>
+                                <textarea class="form-control font-monospace" asp-for="EditTemplate.HtmlBody" rows="18" spellcheck="false"></textarea>
+                                <div class="form-text">@T("et.htmlHelp")</div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" asp-for="EditTemplate.PlainTextBody">@T("et.plainBody")</label>
+                                <textarea class="form-control font-monospace" asp-for="EditTemplate.PlainTextBody" rows="5" spellcheck="false"></textarea>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" asp-for="EditTemplate.Active" />
+                                    <label class="form-check-label" asp-for="EditTemplate.Active">@T("common.active")</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">@T("et.save")</button>
+                            <a class="btn btn-outline-secondary" asp-page="/Settings/EmailTemplates">@T("common.cancel")</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header"><strong>@T("et.copy")</strong></div>
+                <div class="card-body">
+                    <form method="post" asp-page-handler="CopyTemplate">
+                        <input type="hidden" asp-for="CopyTemplate.SourceTemplateId" value="@Model.EditTemplate.Id" />
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label" asp-for="CopyTemplate.TemplateName">@T("et.templateName")</label>
+                                <input class="form-control" asp-for="CopyTemplate.TemplateName" value="@Model.EditTemplate.TemplateName" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" asp-for="CopyTemplate.Domain">@T("et.newDomain")</label>
+                                <input class="form-control" asp-for="CopyTemplate.Domain" value="@Model.EditTemplate.Domain" placeholder="example.com or *" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" asp-for="CopyTemplate.LanguageCode">@T("et.language")</label>
+                                <input class="form-control" asp-for="CopyTemplate.LanguageCode" value="@Model.EditTemplate.LanguageCode" maxlength="10" />
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <button type="submit" class="btn btn-outline-primary w-100">@T("et.copyButton")</button>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" asp-for="CopyTemplate.Active" />
+                                    <label class="form-check-label" asp-for="CopyTemplate.Active">@T("et.copyActive")</label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check">
+                                    <input class="form-check-input" asp-for="CopyTemplate.CopyImages" />
+                                    <label class="form-check-label" asp-for="CopyTemplate.CopyImages">@T("et.copyImages")</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-text mt-2">@T("et.copyHelp")</div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card mb-4">
+                <div class="card-header"><strong>@T("et.images")</strong></div>
+                <div class="card-body">
+                    <p class="text-muted">@T("et.imagesHelp")</p>
+
+                    <div class="table-responsive mb-4">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>@T("et.domain")</th>
+                                    <th>@T("et.contentId")</th>
+                                    <th>@T("et.imagePath")</th>
+                                    <th>@T("et.mimeType")</th>
+                                    <th>@T("common.active")</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var image in Model.Images)
+                            {
+                                <tr>
+                                    <td>@image.Domain</td>
+                                    <td><code>@image.ContentId</code></td>
+                                    <td class="text-break">@image.ImagePath</td>
+                                    <td>@image.MimeType</td>
+                                    <td>@(image.Active ? T("common.yes") : T("common.no"))</td>
+                                    <td class="text-end">
+                                        <form method="post" asp-page-handler="DeleteImage" asp-route-id="@Model.EditTemplate.Id" onsubmit="return confirm('@T("et.removeConfirm")');">
+                                            <input type="hidden" name="imageId" value="@image.Id" />
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">@T("common.remove")</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <form method="post" asp-page-handler="AddImage" asp-route-id="@Model.EditTemplate.Id">
+                        <input type="hidden" asp-for="NewImage.TemplateName" value="@Model.EditTemplate.TemplateName" />
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label" asp-for="NewImage.Domain">@T("et.domain")</label>
+                                <input class="form-control" asp-for="NewImage.Domain" value="@Model.EditTemplate.Domain" placeholder="example.com or *" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" asp-for="NewImage.ContentId">@T("et.contentId")</label>
+                                <input class="form-control" asp-for="NewImage.ContentId" placeholder="header-logo" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" asp-for="NewImage.ImagePath">@T("et.imagePath")</label>
+                                <input class="form-control" asp-for="NewImage.ImagePath" placeholder="C:\ProgramData\UserChangeQueueWeb\EmailImages\logo.png" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" asp-for="NewImage.MimeType">@T("et.mimeType")</label>
+                                <input class="form-control" asp-for="NewImage.MimeType" placeholder="image/png" />
+                            </div>
+                            <div class="col-12">
+                                <button type="submit" class="btn btn-outline-primary">@T("et.addImage")</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><strong>@T("et.placeholders")</strong></div>
+                <div class="card-body">
+                    <p class="mb-2">@T("et.placeholderHelp")</p>
+                    <code>{DisplayName}</code>
+                    <code>{GivenName}</code>
+                    <code>{SamAccountName}</code>
+                    <code>{UserPrincipalName}</code>
+                    <code>{Mail}</code>
+                    <code>{PrivateEmail}</code>
+                    <code>{Company}</code>
+                    <code>{Department}</code>
+                    <code>{Title}</code>
+                    <code>{Office}</code>
+                    <code>{ManagerSamAccountName}</code>
+                    <code>{ManagerDisplayName}</code>
+                    <code>{RequestedBy}</code>
+                    <code>{ExecuteAfter}</code>
+                    <code>{AccountExpirationDate}</code>
+                    <code>{InitialPassword}</code>
+                    <code>{AccessCard}</code>
+                    <hr />
+                    <p class="text-muted mb-0">@T("et.doubleBrace")</p>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="alert alert-info">@T("et.select")</div>
+        }
+    </div>
+</div>

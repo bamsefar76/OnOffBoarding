@@ -1,0 +1,5 @@
+@page
+@{
+    var target = "/Requests/UpdateUser" + HttpContext.Request.QueryString;
+    Response.Redirect(target, permanent: false);
+}

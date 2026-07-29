@@ -1,0 +1,22 @@
+@page "{id:long}"
+@model UserChangeQueueWeb.Pages.Assignments.SubmittedModel
+@{
+    ViewData["Title"] = "Assignment submitted";
+}
+
+<h1>Assignment submitted</h1>
+<div class="alert alert-success">The assignment for <strong>@Model.PersonName</strong> was submitted.</div>
+<dl class="row">
+    <dt class="col-sm-3">Assignment ID</dt><dd class="col-sm-9">@Model.AssignmentId</dd>
+    <dt class="col-sm-3">Project</dt><dd class="col-sm-9">@(Model.ProjectName ?? "—")</dd>
+    <dt class="col-sm-3">Period</dt><dd class="col-sm-9">@Model.StartDate.ToString("dd.MM.yyyy") – @(Model.EndDate?.ToString("dd.MM.yyyy") ?? "open-ended")</dd>
+</dl>
+@if (Model.HasOverlap)
+{
+    <div class="alert alert-warning">This assignment overlaps an existing assignment and has been flagged for IT review.</div>
+}
+@if (Model.RequiresIdentityChange)
+{
+    <div class="alert alert-warning">The selected label differs from the person's current identity. IT must review the UPN and primary email replacement.</div>
+}
+<a asp-page="/Assignments/Create" class="btn btn-primary">Add another assignment</a>

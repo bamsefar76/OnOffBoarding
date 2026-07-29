@@ -1,0 +1,312 @@
+@using UserChangeQueueWeb.Services
+@inject PageAccessService PageAccessService
+@inject AccessScopeService AccessScopeService
+@inject UiTextService UiTextService
+
+@{
+    var currentPage = ViewContext.RouteData.Values["page"]?.ToString() ?? "";
+    var isAuthenticated = User.Identity?.IsAuthenticated == true;
+    var currentUserName = User.Identity?.Name ?? "";
+    var returnUrl = Context.Request.Path.ToString() + Context.Request.QueryString.ToString();
+
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["app.title"] = "User administration",
+        ["nav.home"] = "Home",
+        ["nav.requests"] = "Requests",
+        ["nav.organisation"] = "Organisation",
+        ["nav.newUser"] = "New user",
+        ["nav.updateUser"] = "Update user",
+        ["nav.addAssignment"] = "Add assignment",
+        ["nav.supervisor"] = "Supervisor",
+        ["nav.approvals"] = "Approvals",
+        ["nav.upcomingChanges"] = "Upcoming",
+        ["nav.reports"] = "Reports",
+        ["nav.cfoReport"] = "CFO report",
+        ["nav.settings"] = "Settings",
+        ["nav.groupRules"] = "Group rules",
+        ["nav.translations"] = "Translations",
+        ["nav.domains"] = "Domains",
+        ["nav.emailTemplates"] = "Email templates",
+        ["nav.pageAccessRules"] = "Page access rules",
+        ["nav.accessCardGroups"] = "Access-card groups",
+        ["nav.projects"] = "Projects",
+        ["nav.projectList"] = "Project list",
+        ["nav.projectImport"] = "Imported projects",
+        ["nav.temporaryAccess"] = "Temporary access",
+        ["nav.temporaryAccessGroups"] = "Temporary access groups",
+        ["nav.privacy"] = "Privacy",
+        ["nav.logout"] = "Sign out",
+        ["nav.language"] = "Language",
+        ["nav.signedInAs"] = "Signed in as"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(Context, textFallbacks);
+    var languages = await UiTextService.GetActiveLanguagesAsync();
+    var accessScope = isAuthenticated
+        ? await AccessScopeService.GetCurrentAsync(User, Context.RequestAborted)
+        : UserAccessScope.Empty;
+
+    string T(string key)
+    {
+        return uiText.T(key, textFallbacks[key]);
+    }
+
+    var canOpenOrganisation = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Organisation/Tree");
+    var canOpenUserChangeQueue = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/NewUser");
+    var canOpenUpdateUser = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/UpdateUser");
+    var canOpenAddAssignment = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Assignments/Create");
+    var canOpenSupervisor = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/Supervisor");
+    var canOpenApprovals = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/Approvals");
+    var canOpenUpcomingChanges = isAuthenticated &&
+        (await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/Upcoming")
+         || accessScope.HasScopedUpcomingAccess);
+    var canOpenSnapshot = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Reports/Snapshot");
+    var canOpenProjectList = isAuthenticated &&
+        (await PageAccessService.UserHasAccessAsync(currentUserName, "/Projects/Index")
+         || accessScope.IsProjectManager
+         || accessScope.IsIT);
+    var canOpenProjectImport = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Projects/Import");
+    var canOpenProjects = canOpenProjectList || canOpenProjectImport;
+    var canOpenTemporaryAccess = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/TemporaryAccess");
+
+    var canOpenGroupRules = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/GroupRules");
+    var canOpenTranslations = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/Translations");
+    var canOpenDomains = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/Domains");
+    var canOpenEmailTemplates = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/EmailTemplates");
+    var canOpenPageAccessRules = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/PageAccessRules");
+    var canOpenAccessCardGroups = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/AccessCardGroups");
+    var canOpenTemporaryAccessGroups = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/TemporaryAccessGroups");
+
+    var canOpenRequests = canOpenUserChangeQueue || canOpenUpdateUser || canOpenAddAssignment || canOpenSupervisor || canOpenApprovals || canOpenUpcomingChanges;
+    var canOpenReports = canOpenSnapshot;
+    var canOpenSettings = canOpenGroupRules || canOpenTranslations || canOpenDomains || canOpenEmailTemplates || canOpenPageAccessRules || canOpenAccessCardGroups || canOpenTemporaryAccessGroups;
+
+    string ActiveClass(string pagePath)
+    {
+        return string.Equals(currentPage, pagePath, StringComparison.OrdinalIgnoreCase)
+            ? " active"
+            : "";
+    }
+
+    string DropdownActiveClass(params string[] pagePaths)
+    {
+        return pagePaths.Any(pagePath => string.Equals(currentPage, pagePath, StringComparison.OrdinalIgnoreCase))
+            ? " active"
+            : "";
+    }
+
+    string LanguageActiveClass(string languageCode)
+    {
+        return string.Equals(uiText.LanguageCode, languageCode, StringComparison.OrdinalIgnoreCase)
+            ? " active"
+            : "";
+    }
+
+    string SettingsActiveClass()
+    {
+        return currentPage.StartsWith("/Settings/", StringComparison.OrdinalIgnoreCase)
+            ? " active"
+            : "";
+    }
+}
+
+<!DOCTYPE html>
+<html lang="@uiText.LanguageCode">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - @T("app.title")</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/UserChangeQueueWeb.styles.css" asp-append-version="true" />
+</head>
+<body>
+    <header>
+        <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom box-shadow mb-3">
+            <div class="container-fluid">
+                <a class="navbar-brand" asp-area="" asp-page="/Index">@T("app.title")</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-lg-inline-flex justify-content-between">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item">
+                            <a class="nav-link text-dark@(ActiveClass("/Index"))" asp-area="" asp-page="/Index">@T("nav.home")</a>
+                        </li>
+
+                        @if (canOpenOrganisation)
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-dark@(ActiveClass("/Organisation/Tree"))" asp-area="" asp-page="/Organisation/Tree">@T("nav.organisation")</a>
+                            </li>
+                        }
+
+                        @if (canOpenRequests)
+                        {
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle text-dark@(DropdownActiveClass("/Requests/NewUser", "/Requests/UpdateUser", "/Assignments/Create", "/Assignments/Submitted", "/Requests/Supervisor", "/Requests/Approvals", "/Requests/Upcoming", "/Requests/UserPendingChanges"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    @T("nav.requests")
+                                </a>
+                                <ul class="dropdown-menu">
+                                    @if (canOpenUserChangeQueue)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Requests/NewUser"))" asp-area="" asp-page="/Requests/NewUser">@T("nav.newUser")</a></li>
+                                    }
+                                    @if (canOpenUpdateUser)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Requests/UpdateUser"))" asp-area="" asp-page="/Requests/UpdateUser">@T("nav.updateUser")</a></li>
+                                    }
+                                    @if (canOpenAddAssignment)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Assignments/Create"))" asp-area="" asp-page="/Assignments/Create">@T("nav.addAssignment")</a></li>
+                                    }
+                                    @if (canOpenApprovals)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Requests/Approvals"))" asp-area="" asp-page="/Requests/Approvals">@T("nav.approvals")</a></li>
+                                    }
+                                    @if (canOpenUpcomingChanges)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Requests/Upcoming"))" asp-area="" asp-page="/Requests/Upcoming">@T("nav.upcomingChanges")</a></li>
+                                    }
+                                    @if (canOpenSupervisor)
+                                    {
+                                        <li><hr class="dropdown-divider" /></li>
+                                        <li><a class="dropdown-item@(ActiveClass("/Requests/Supervisor"))" asp-area="" asp-page="/Requests/Supervisor">@T("nav.supervisor")</a></li>
+                                    }
+                                </ul>
+                            </li>
+                        }
+
+                        @if (canOpenTemporaryAccess)
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-dark@(ActiveClass("/TemporaryAccess/Index"))" asp-area="" asp-page="/TemporaryAccess/Index">@T("nav.temporaryAccess")</a>
+                            </li>
+                        }
+
+                        @if (canOpenReports)
+                        {
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle text-dark@(DropdownActiveClass("/Reports/Snapshot"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    @T("nav.reports")
+                                </a>
+                                <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item@(ActiveClass("/Reports/Snapshot"))" asp-area="" asp-page="/Reports/Snapshot">@T("nav.cfoReport")</a></li>
+                                </ul>
+                            </li>
+                        }
+
+                        @if (canOpenProjects)
+                        {
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle text-dark@(DropdownActiveClass("/Projects/Index", "/Projects/Import", "/Projects/Edit"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    @T("nav.projects")
+                                </a>
+                                <ul class="dropdown-menu">
+                                    @if (canOpenProjectList)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Projects/Index"))" asp-area="" asp-page="/Projects/Index">@T("nav.projectList")</a></li>
+                                    }
+                                    @if (canOpenProjectImport)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Projects/Import"))" asp-area="" asp-page="/Projects/Import">@T("nav.projectImport")</a></li>
+                                    }
+                                </ul>
+                            </li>
+                        }
+
+                        @if (canOpenSettings)
+                        {
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle text-dark@(SettingsActiveClass())" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    @T("nav.settings")
+                                </a>
+                                <ul class="dropdown-menu">
+                                    @if (canOpenDomains)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Settings/Domains"))" asp-area="" asp-page="/Settings/Domains">@T("nav.domains")</a></li>
+                                    }
+                                    @if (canOpenGroupRules)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Settings/GroupRules"))" asp-area="" asp-page="/Settings/GroupRules">@T("nav.groupRules")</a></li>
+                                    }
+                                    @if (canOpenEmailTemplates)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Settings/EmailTemplates"))" asp-area="" asp-page="/Settings/EmailTemplates">@T("nav.emailTemplates")</a></li>
+                                    }
+                                    @if (canOpenPageAccessRules)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Settings/PageAccessRules"))" asp-area="" asp-page="/Settings/PageAccessRules">@T("nav.pageAccessRules")</a></li>
+                                    }
+                                    @if (canOpenAccessCardGroups)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Settings/AccessCardGroups"))" asp-area="" asp-page="/Settings/AccessCardGroups">@T("nav.accessCardGroups")</a></li>
+                                    }
+                                    @if (canOpenTemporaryAccessGroups)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Settings/TemporaryAccessGroups"))" asp-area="" asp-page="/Settings/TemporaryAccessGroups">@T("nav.temporaryAccessGroups")</a></li>
+                                    }
+                                    @if (canOpenTranslations)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Settings/Translations"))" asp-area="" asp-page="/Settings/Translations">@T("nav.translations")</a></li>
+                                    }
+                                </ul>
+                            </li>
+                        }
+                    </ul>
+
+                    @if (isAuthenticated)
+                    {
+                        <ul class="navbar-nav">
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle text-dark" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    @currentUserName
+                                </a>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><h6 class="dropdown-header">@T("nav.signedInAs")</h6></li>
+                                    <li><span class="dropdown-item-text text-muted">@currentUserName</span></li>
+                                    <li><hr class="dropdown-divider" /></li>
+                                    <li><h6 class="dropdown-header">@T("nav.language")</h6></li>
+                                    @foreach (var language in languages)
+                                    {
+                                        <li>
+                                            <a class="dropdown-item@(LanguageActiveClass(language.LanguageCode))"
+                                               asp-page="/Language"
+                                               asp-route-culture="@language.LanguageCode"
+                                               asp-route-returnUrl="@returnUrl">
+                                                @language.NativeName
+                                            </a>
+                                        </li>
+                                    }
+                                    <li><hr class="dropdown-divider" /></li>
+                                    <li><a class="dropdown-item@(ActiveClass("/Privacy"))" asp-area="" asp-page="/Privacy">@T("nav.privacy")</a></li>
+                                    <li><a class="dropdown-item@(ActiveClass("/Logout"))" asp-area="" asp-page="/Logout">@T("nav.logout")</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    }
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2026 - @T("app.title") - <a asp-area="" asp-page="/Privacy">@T("nav.privacy")</a>
+        </div>
+    </footer>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

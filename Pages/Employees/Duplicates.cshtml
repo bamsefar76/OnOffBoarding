@@ -1,0 +1,49 @@
+@page
+@model UserChangeQueueWeb.Pages.Employees.DuplicatesModel
+@{
+    ViewData["Title"] = "Duplicate employees";
+}
+<h2>Duplicate employees</h2>
+<p class="text-muted">Possible duplicates are never merged automatically. Choose which employee to retain.</p>
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage)) { <div class="alert alert-info">@Model.StatusMessage</div> }
+@if (Model.Pairs.Count == 0) { <div class="alert alert-success">No likely duplicates found.</div> }
+else
+{
+<table class="table table-striped table-bordered align-middle">
+<thead><tr><th>Employee A</th><th>Employee B</th><th>Matches</th><th>Merge</th></tr></thead>
+<tbody>
+@foreach (var p in Model.Pairs)
+{
+<tr>
+<td><strong>@p.Name1</strong> <span class="text-muted">#@p.EmployeeId1</span><br/>@p.Email1<br/>@p.Phone1<br/>@p.Upn1</td>
+<td><strong>@p.Name2</strong> <span class="text-muted">#@p.EmployeeId2</span><br/>@p.Email2<br/>@p.Phone2<br/>@p.Upn2</td>
+<td>
+@if (p.EmailMatch) { <span class="badge bg-success me-1">Email</span> }
+@if (p.PhoneMatch) { <span class="badge bg-success me-1">Phone</span> }
+@if (p.NameMatch) { <span class="badge bg-secondary me-1">Name</span> }
+<div class="small text-muted mt-1">Score: @p.Score</div>
+</td>
+<td>
+<form method="post" asp-page-handler="Merge" onsubmit="return confirm('Merge these employees? This moves all history and requests.');">
+<select name="RetainedEmployeeId" class="form-select form-select-sm mb-1">
+<option value="@p.EmployeeId1">Keep @p.Name1 (#@p.EmployeeId1)</option>
+<option value="@p.EmployeeId2">Keep @p.Name2 (#@p.EmployeeId2)</option>
+</select>
+<input type="hidden" name="MergedEmployeeId" value="@p.EmployeeId2" class="merged-id" />
+<input name="Reason" class="form-control form-control-sm mb-1" placeholder="Reason (optional)" />
+<button class="btn btn-sm btn-danger" type="submit">Merge</button>
+</form>
+</td>
+</tr>
+}
+</tbody></table>
+<script>
+document.querySelectorAll('select[name="RetainedEmployeeId"]').forEach(function(select) {
+  select.addEventListener('change', function() {
+    const form = select.closest('form');
+    const values = Array.from(select.options).map(o => o.value);
+    form.querySelector('.merged-id').value = values.find(v => v !== select.value);
+  });
+});
+</script>
+}

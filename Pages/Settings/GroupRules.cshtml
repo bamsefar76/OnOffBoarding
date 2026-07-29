@@ -1,0 +1,500 @@
+@page
+@model UserChangeQueueWeb.Pages.Settings.GroupRulesModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.search"] = "Search",
+        ["common.filter"] = "Filter",
+        ["common.clear"] = "Clear",
+        ["common.active"] = "Active",
+        ["common.inactive"] = "Inactive",
+        ["common.priority"] = "Priority",
+        ["common.field"] = "Field",
+        ["common.operator"] = "Operator",
+        ["common.value"] = "Value",
+        ["common.value2"] = "Value 2",
+        ["common.group"] = "Group",
+        ["common.description"] = "Description",
+        ["common.action"] = "Action",
+        ["common.required"] = "Required",
+        ["common.approval"] = "Approval",
+        ["common.notes"] = "Notes",
+        ["common.save"] = "Save",
+        ["common.add"] = "Add",
+        ["common.delete"] = "Delete",
+        ["common.remove"] = "Remove",
+        ["common.disable"] = "Disable",
+        ["common.activate"] = "Activate",
+        ["adgrouprules.title"] = "AD group rules",
+        ["adgrouprules.help"] = "Maintain automatic AD group rules used by CREATE and UPDATE requests. Rules are evaluated against request fields such as domain, company, department, title, employee type, office, computer type, Office license, and access card.",
+        ["adgrouprules.rules"] = "Rules",
+        ["adgrouprules.newRule"] = "New rule",
+        ["adgrouprules.editRule"] = "Edit rule",
+        ["adgrouprules.ruleName"] = "Rule name",
+        ["adgrouprules.ruleNameOrDescription"] = "Rule name or description",
+        ["adgrouprules.showInactive"] = "Show inactive",
+        ["adgrouprules.noRulesFound"] = "No rules found.",
+        ["adgrouprules.matchMode"] = "Match mode",
+        ["adgrouprules.effectiveFrom"] = "Effective from",
+        ["adgrouprules.effectiveTo"] = "Effective to",
+        ["adgrouprules.appliesToAllUsers"] = "Applies to all users",
+        ["adgrouprules.appliesToAllUsersHelp"] = "Use this only for global baseline rules. Conditional rules should leave this off.",
+        ["adgrouprules.saveRule"] = "Save rule",
+        ["adgrouprules.conditions"] = "Conditions",
+        ["adgrouprules.conditionsIgnored"] = "This rule is marked {0}Applies to all users{1}. Conditions below are ignored by the rule engine.",
+        ["adgrouprules.noConditions"] = "No conditions configured.",
+        ["adgrouprules.valueExample"] = "e.g. example.com",
+        ["adgrouprules.inHelp"] = "For {0}In{1}, separate values with semicolon or comma.",
+        ["adgrouprules.targetGroups"] = "Target groups",
+        ["adgrouprules.noTargetGroups"] = "No target groups configured.",
+        ["adgrouprules.reasonNotes"] = "Reason/notes",
+        ["adgrouprules.removeTargetConfirm"] = "Remove this target group from the rule?",
+        ["adgrouprules.addTargetGroup"] = "Add target group",
+        ["adgrouprules.searchAdGroups"] = "Search AD groups",
+        ["adgrouprules.searchGroups"] = "Search groups",
+        ["adgrouprules.groupSearchPlaceholder"] = "Group name, CN, samAccountName, DN, description",
+        ["adgrouprules.noGroupsMatched"] = "No active AD groups matched '{0}'.",
+        ["adgrouprules.addAs"] = "Add as",
+        ["adgrouprules.statusSummary"] = "{0} · {1} · {2} · {3}",
+        ["adgrouprules.allUsers"] = "All users",
+        ["adgrouprules.conditionCount"] = "{0} condition(s)",
+        ["adgrouprules.targetCount"] = "{0} target(s)"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    ViewData["Title"] = uiText.T("adgrouprules.title", textFallbacks["adgrouprules.title"]);
+
+    string T(string key)
+    {
+        return uiText.T(key, textFallbacks[key]);
+    }
+
+    string F(string key, params object[] args)
+    {
+        return string.Format(uiText.T(key, textFallbacks[key]), args);
+    }
+
+    var removeTargetConfirm = T("adgrouprules.removeTargetConfirm");
+}
+
+<h2>@T("adgrouprules.title")</h2>
+
+<p class="text-muted">
+    @T("adgrouprules.help")
+</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-info" role="alert">
+        @Model.StatusMessage
+    </div>
+}
+
+<div class="row g-4">
+    <div class="col-12 col-xl-4">
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span>@T("adgrouprules.rules")</span>
+                <a class="btn btn-sm btn-primary" asp-page-handler="New" asp-route-showInactive="@Model.ShowInactive">@T("adgrouprules.newRule")</a>
+            </div>
+            <div class="card-body">
+                <form method="get" class="mb-3">
+                    <div class="mb-2">
+                        <label asp-for="Search" class="form-label">@T("common.search")</label>
+                        <input asp-for="Search" class="form-control" placeholder='@T("adgrouprules.ruleNameOrDescription")' />
+                    </div>
+                    <div class="form-check mb-2">
+                        <input asp-for="ShowInactive" class="form-check-input" />
+                        <label asp-for="ShowInactive" class="form-check-label">@T("adgrouprules.showInactive")</label>
+                    </div>
+                    <button type="submit" class="btn btn-secondary btn-sm">@T("common.filter")</button>
+                    <a asp-page="/Settings/GroupRules" class="btn btn-outline-secondary btn-sm">@T("common.clear")</a>
+                </form>
+
+                @if (Model.RuleSets.Count == 0)
+                {
+                    <div class="alert alert-warning mb-0">@T("adgrouprules.noRulesFound")</div>
+                }
+                else
+                {
+                    <div class="list-group">
+                        @foreach (var rule in Model.RuleSets)
+                        {
+                            var selected = Model.RuleSetId == rule.RuleSetId;
+                            var activeText = rule.Active ? T("common.active") : T("common.inactive");
+                            var scopeText = rule.AppliesToAllUsers
+                                ? T("adgrouprules.allUsers")
+                                : F("adgrouprules.conditionCount", rule.ConditionCount);
+                            var targetCountText = F("adgrouprules.targetCount", rule.TargetCount);
+                            var summaryText = F("adgrouprules.statusSummary", $"{T("common.priority")} {rule.Priority}", rule.MatchMode, scopeText, targetCountText);
+
+                            <a class="list-group-item list-group-item-action @(selected ? "active" : "")"
+                               asp-page="/Settings/GroupRules"
+                               asp-route-ruleSetId="@rule.RuleSetId"
+                               asp-route-search="@Model.Search"
+                               asp-route-showInactive="@Model.ShowInactive">
+                                <div class="d-flex justify-content-between">
+                                    <strong>@rule.RuleSetName</strong>
+                                    <span class="badge @(rule.Active ? "bg-success" : "bg-secondary")">@activeText</span>
+                                </div>
+                                <div class="small @(selected ? "text-white-50" : "text-muted")">
+                                    @summaryText
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(rule.Description))
+                                {
+                                    <div class="small @(selected ? "text-white-50" : "text-muted")">@rule.Description</div>
+                                }
+                            </a>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-8">
+        <div class="card mb-3">
+            <div class="card-header">@(Model.Rule.RuleSetId > 0 ? T("adgrouprules.editRule") : T("adgrouprules.newRule"))</div>
+            <div class="card-body">
+                <form method="post" asp-page-handler="SaveRule">
+                    <input type="hidden" asp-for="Rule.RuleSetId" />
+                    <input type="hidden" asp-for="Search" />
+                    <input type="hidden" asp-for="ShowInactive" />
+                    <input type="hidden" asp-for="GroupSearch" />
+
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label asp-for="Rule.RuleSetName" class="form-label">@T("adgrouprules.ruleName")</label>
+                            <input asp-for="Rule.RuleSetName" class="form-control" />
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="Rule.Priority" class="form-label">@T("common.priority")</label>
+                            <input asp-for="Rule.Priority" class="form-control" type="number" />
+                        </div>
+                        <div class="col-12">
+                            <label asp-for="Rule.Description" class="form-label">@T("common.description")</label>
+                            <textarea asp-for="Rule.Description" class="form-control" rows="2"></textarea>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="Rule.MatchMode" class="form-label">@T("adgrouprules.matchMode")</label>
+                            <select asp-for="Rule.MatchMode" class="form-select">
+                                @foreach (var mode in Model.MatchModes)
+                                {
+                                    <option value="@mode">@mode</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="Rule.EffectiveFrom" class="form-label">@T("adgrouprules.effectiveFrom")</label>
+                            <input asp-for="Rule.EffectiveFrom" class="form-control" type="date" />
+                        </div>
+                        <div class="col-md-4">
+                            <label asp-for="Rule.EffectiveTo" class="form-label">@T("adgrouprules.effectiveTo")</label>
+                            <input asp-for="Rule.EffectiveTo" class="form-control" type="date" />
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mt-2">
+                                <input asp-for="Rule.Active" class="form-check-input" />
+                                <label asp-for="Rule.Active" class="form-check-label">@T("common.active")</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mt-2">
+                                <input asp-for="Rule.AppliesToAllUsers" class="form-check-input" />
+                                <label asp-for="Rule.AppliesToAllUsers" class="form-check-label">@T("adgrouprules.appliesToAllUsers")</label>
+                            </div>
+                            <div class="form-text">@T("adgrouprules.appliesToAllUsersHelp")</div>
+                        </div>
+                    </div>
+
+                    <div class="mt-3">
+                        <button type="submit" class="btn btn-primary">@T("adgrouprules.saveRule")</button>
+                        @if (Model.Rule.RuleSetId > 0)
+                        {
+                            if (Model.Rule.Active)
+                            {
+                                <button type="submit"
+                                        class="btn btn-outline-warning"
+                                        asp-page-handler="SetActive"
+                                        asp-route-ruleSetId="@Model.Rule.RuleSetId"
+                                        asp-route-active="false">
+                                    @T("common.disable")
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="submit"
+                                        class="btn btn-outline-success"
+                                        asp-page-handler="SetActive"
+                                        asp-route-ruleSetId="@Model.Rule.RuleSetId"
+                                        asp-route-active="true">
+                                    @T("common.activate")
+                                </button>
+                            }
+                        }
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        @if (Model.Rule.RuleSetId > 0)
+        {
+            <div class="card mb-3">
+                <div class="card-header">@T("adgrouprules.conditions")</div>
+                <div class="card-body">
+                    @if (Model.Rule.AppliesToAllUsers)
+                    {
+                        <div class="alert alert-warning">
+                            @Html.Raw(F("adgrouprules.conditionsIgnored", "<strong>", "</strong>"))
+                        </div>
+                    }
+
+                    @if (Model.Conditions.Count == 0)
+                    {
+                        <p class="text-muted">@T("adgrouprules.noConditions")</p>
+                    }
+                    else
+                    {
+                        <table class="table table-sm table-bordered align-middle">
+                            <thead>
+                                <tr>
+                                    <th>@T("common.field")</th>
+                                    <th>@T("common.operator")</th>
+                                    <th>@T("common.value")</th>
+                                    <th>@T("common.value2")</th>
+                                    <th style="width: 7rem;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var condition in Model.Conditions)
+                                {
+                                    <tr>
+                                        <td>@condition.FieldName</td>
+                                        <td>@condition.Operator</td>
+                                        <td>@condition.MatchValue</td>
+                                        <td>@condition.MatchValue2</td>
+                                        <td>
+                                            <form method="post" asp-page-handler="DeleteCondition">
+                                                <input type="hidden" name="conditionId" value="@condition.ConditionId" />
+                                                <input type="hidden" name="ruleSetId" value="@Model.Rule.RuleSetId" />
+                                                <input type="hidden" asp-for="Search" />
+                                                <input type="hidden" asp-for="ShowInactive" />
+                                                <input type="hidden" asp-for="GroupSearch" />
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">@T("common.delete")</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+
+                    <form method="post" asp-page-handler="AddCondition" class="row g-2 align-items-end">
+                        <input type="hidden" asp-for="RuleSetId" value="@Model.Rule.RuleSetId" />
+                        <input type="hidden" asp-for="Search" />
+                        <input type="hidden" asp-for="ShowInactive" />
+                        <input type="hidden" asp-for="GroupSearch" />
+                        <div class="col-md-3">
+                            <label asp-for="NewCondition.FieldName" class="form-label">@T("common.field")</label>
+                            <select asp-for="NewCondition.FieldName" class="form-select">
+                                @foreach (var field in Model.FieldNames)
+                                {
+                                    <option value="@field">@field</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label asp-for="NewCondition.Operator" class="form-label">@T("common.operator")</label>
+                            <select asp-for="NewCondition.Operator" class="form-select">
+                                @foreach (var op in Model.Operators)
+                                {
+                                    <option value="@op">@op</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label asp-for="NewCondition.MatchValue" class="form-label">@T("common.value")</label>
+                            <input asp-for="NewCondition.MatchValue" class="form-control" placeholder='@T("adgrouprules.valueExample")' />
+                        </div>
+                        <div class="col-md-2">
+                            <label asp-for="NewCondition.MatchValue2" class="form-label">@T("common.value2")</label>
+                            <input asp-for="NewCondition.MatchValue2" class="form-control" />
+                        </div>
+                        <div class="col-md-1">
+                            <button type="submit" class="btn btn-secondary w-100">@T("common.add")</button>
+                        </div>
+                    </form>
+                    <div class="form-text mt-2">@Html.Raw(F("adgrouprules.inHelp", "<strong>", "</strong>"))</div>
+                </div>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header">@T("adgrouprules.targetGroups")</div>
+                <div class="card-body">
+                    @if (Model.Targets.Count == 0)
+                    {
+                        <p class="text-muted">@T("adgrouprules.noTargetGroups")</p>
+                    }
+                    else
+                    {
+                        <table class="table table-sm table-bordered align-middle">
+                            <thead>
+                                <tr>
+                                    <th>@T("common.group")</th>
+                                    <th>@T("common.action")</th>
+                                    <th>@T("common.required")</th>
+                                    <th>@T("common.approval")</th>
+                                    <th>@T("common.notes")</th>
+                                    <th style="width: 12rem;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var target in Model.Targets)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div><strong>@target.SamAccountName</strong></div>
+                                            @if (!string.IsNullOrWhiteSpace(target.Name) && target.Name != target.SamAccountName)
+                                            {
+                                                <div class="small text-muted">@target.Name</div>
+                                            }
+                                            <div class="small text-muted">@target.DistinguishedName</div>
+                                        </td>
+                                        <td colspan="4">
+                                            <form method="post" asp-page-handler="UpdateTarget" class="row g-2 align-items-end">
+                                                <input type="hidden" name="targetId" value="@target.TargetId" />
+                                                <input type="hidden" name="ruleSetId" value="@Model.Rule.RuleSetId" />
+                                                <input type="hidden" asp-for="Search" />
+                                                <input type="hidden" asp-for="ShowInactive" />
+                                                <input type="hidden" asp-for="GroupSearch" />
+                                                <div class="col-md-2">
+                                                    <select name="action" class="form-select form-select-sm">
+                                                        @foreach (var action in Model.TargetActions)
+                                                        {
+                                                            <option value="@action" selected="@(string.Equals(target.Action, action, StringComparison.OrdinalIgnoreCase))">@action</option>
+                                                        }
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" name="required" value="true" @(target.Required ? "checked" : "") />
+                                                        <input type="hidden" name="required" value="false" />
+                                                        <label class="form-check-label">@T("common.required")</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" name="approvalRequired" value="true" @(target.ApprovalRequired ? "checked" : "") />
+                                                        <input type="hidden" name="approvalRequired" value="false" />
+                                                        <label class="form-check-label">@T("common.approval")</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-4">
+                                                    <input name="notes" value="@target.Notes" class="form-control form-control-sm" placeholder='@T("adgrouprules.reasonNotes")' />
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary">@T("common.save")</button>
+                                                </div>
+                                            </form>
+                                        </td>
+                                        <td>
+                                            <form method="post" asp-page-handler="DeleteTarget">
+                                                <input type="hidden" name="targetId" value="@target.TargetId" />
+                                                <input type="hidden" name="ruleSetId" value="@Model.Rule.RuleSetId" />
+                                                <input type="hidden" asp-for="Search" />
+                                                <input type="hidden" asp-for="ShowInactive" />
+                                                <input type="hidden" asp-for="GroupSearch" />
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('@removeTargetConfirm');">@T("common.remove")</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+
+                    <hr />
+                    <h5>@T("adgrouprules.addTargetGroup")</h5>
+                    <form method="get" class="row g-2 align-items-end mb-3">
+                        <input type="hidden" asp-for="RuleSetId" value="@Model.Rule.RuleSetId" />
+                        <input type="hidden" asp-for="Search" />
+                        <input type="hidden" asp-for="ShowInactive" />
+                        <div class="col-md-8">
+                            <label asp-for="GroupSearch" class="form-label">@T("adgrouprules.searchAdGroups")</label>
+                            <input asp-for="GroupSearch" class="form-control" placeholder='@T("adgrouprules.groupSearchPlaceholder")' />
+                        </div>
+                        <div class="col-md-4">
+                            <button type="submit" class="btn btn-secondary">@T("adgrouprules.searchGroups")</button>
+                        </div>
+                    </form>
+
+                    @if (!string.IsNullOrWhiteSpace(Model.GroupSearch))
+                    {
+                        if (Model.GroupSearchResults.Count == 0)
+                        {
+                            <div class="alert alert-warning">@F("adgrouprules.noGroupsMatched", Model.GroupSearch)</div>
+                        }
+                        else
+                        {
+                            <table class="table table-sm table-striped align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>@T("common.group")</th>
+                                        <th>@T("common.description")</th>
+                                        <th style="width: 18rem;">@T("adgrouprules.addAs")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var group in Model.GroupSearchResults)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div><strong>@group.SamAccountName</strong></div>
+                                                @if (!string.IsNullOrWhiteSpace(group.Name) && group.Name != group.SamAccountName)
+                                                {
+                                                    <div class="small text-muted">@group.Name</div>
+                                                }
+                                                <div class="small text-muted">@group.DistinguishedName</div>
+                                            </td>
+                                            <td>@group.Description</td>
+                                            <td>
+                                                <form method="post" asp-page-handler="AddTarget">
+                                                    <input type="hidden" name="ruleSetId" value="@Model.Rule.RuleSetId" />
+                                                    <input type="hidden" name="groupObjectGuid" value="@group.ObjectGuid" />
+                                                    <input type="hidden" asp-for="Search" />
+                                                    <input type="hidden" asp-for="ShowInactive" />
+                                                    <input type="hidden" asp-for="GroupSearch" />
+                                                    <div class="mb-1">
+                                                        <select asp-for="NewTarget.Action" class="form-select form-select-sm">
+                                                            @foreach (var action in Model.TargetActions)
+                                                            {
+                                                                <option value="@action">@action</option>
+                                                            }
+                                                        </select>
+                                                    </div>
+                                                    <div class="form-check form-check-inline">
+                                                        <input asp-for="NewTarget.Required" class="form-check-input" />
+                                                        <label asp-for="NewTarget.Required" class="form-check-label">@T("common.required")</label>
+                                                    </div>
+                                                    <div class="form-check form-check-inline">
+                                                        <input asp-for="NewTarget.ApprovalRequired" class="form-check-input" />
+                                                        <label asp-for="NewTarget.ApprovalRequired" class="form-check-label">@T("common.approval")</label>
+                                                    </div>
+                                                    <input asp-for="NewTarget.Notes" class="form-control form-control-sm mt-1" placeholder='@T("adgrouprules.reasonNotes")' />
+                                                    <button type="submit" class="btn btn-sm btn-primary mt-1">@T("common.add")</button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>

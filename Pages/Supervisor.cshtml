@@ -1,0 +1,5 @@
+@page
+@{
+    var target = "/Requests/Supervisor" + HttpContext.Request.QueryString;
+    Response.Redirect(target, permanent: false);
+}

@@ -1,0 +1,206 @@
+﻿@page
+@model UserChangeQueueWeb.Pages.ProjectImportModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.filter"] = "Filter",
+        ["common.all"] = "All",
+        ["field.company"] = "Company",
+        ["projects.projectNumber"] = "Project number",
+        ["projects.projectName"] = "Project name",
+        ["projectImport.title"] = "Imported projects",
+        ["projectImport.description"] = "Upload the project CSV exported from accounting. New projects are staged for later review; approved and rejected rows are never overwritten.",
+        ["projectImport.chooseFile"] = "CSV file",
+        ["projectImport.upload"] = "Import file",
+        ["projectImport.pending"] = "Pending",
+        ["projectImport.approved"] = "Approved",
+        ["projectImport.rejected"] = "Rejected",
+        ["projectImport.recentImports"] = "Recent imports",
+        ["projectImport.stagedProjects"] = "Staged projects",
+        ["projectImport.accountingName"] = "Accounting name",
+        ["projectImport.friendlyName"] = "Friendly name",
+        ["projectImport.productionManager"] = "Production manager",
+        ["projectImport.reviewComment"] = "Review comment",
+        ["projectImport.approve"] = "Approve",
+        ["projectImport.reject"] = "Reject",
+        ["projectImport.reopen"] = "Reopen",
+        ["projectImport.reviewed"] = "Reviewed"
+    };
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    ViewData["Title"] = T("projectImport.title");
+}
+
+<h2>@T("projectImport.title")</h2>
+<p class="text-muted">@T("projectImport.description")</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <div class="alert @(Model.MessageIsError ? "alert-danger" : "alert-success")" role="alert">@Model.Message</div>
+}
+
+@if (Model.Errors.Count > 0)
+{
+    <div class="alert alert-danger">
+        <strong>CSV validation errors</strong>
+        <ul class="mb-0 mt-2">
+            @foreach (var error in Model.Errors.Take(100))
+            {
+                <li>Line @error.LineNumber: @error.Message</li>
+            }
+        </ul>
+        @if (Model.Errors.Count > 100)
+        {
+            <div class="mt-2">Only the first 100 errors are shown.</div>
+        }
+    </div>
+}
+
+<form method="post" enctype="multipart/form-data" asp-page-handler="Import" class="card card-body mb-4">
+    <div class="row align-items-end g-3">
+        <div class="col-md-8">
+            <label asp-for="Upload" class="form-label">@T("projectImport.chooseFile")</label>
+            <input asp-for="Upload" class="form-control" type="file" accept=".csv,text/csv" required />
+            <div class="form-text">Required columns: Company, ProjectNumber, ProjectName, StartTime, StopTime. Maximum 10 MB.</div>
+        </div>
+        <div class="col-md-4">
+            <button type="submit" class="btn btn-primary">@T("projectImport.upload")</button>
+        </div>
+    </div>
+</form>
+
+<h3 class="h5">@T("projectImport.recentImports")</h3>
+<div class="table-responsive mb-4">
+<table class="table table-sm table-striped table-bordered align-middle">
+    <thead>
+        <tr><th>Imported</th><th>File</th><th>User</th><th>Rows</th><th>New</th><th>Updated</th><th>Unchanged</th><th>Skipped</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+    @if (Model.RecentImports.Count == 0)
+    {
+        <tr><td colspan="9" class="text-muted">No files have been imported.</td></tr>
+    }
+    else
+    {
+        @foreach (var batch in Model.RecentImports)
+        {
+            <tr title="@batch.ErrorMessage">
+                <td>@batch.ImportedAt.ToLocalTime().ToString("g")</td>
+                <td>@batch.FileName</td><td>@batch.ImportedBy</td><td>@batch.RowCount</td>
+                <td>@batch.InsertedCount</td><td>@batch.UpdatedCount</td><td>@batch.UnchangedCount</td><td>@batch.SkippedCount</td><td>@batch.Status</td>
+            </tr>
+        }
+    }
+    </tbody>
+</table>
+</div>
+
+<div class="d-flex justify-content-between align-items-end mb-2">
+    <h3 class="h5 mb-0">@T("projectImport.stagedProjects")</h3>
+    <form method="get" class="d-flex gap-2 align-items-end">
+        <div>
+            <label asp-for="StatusFilter" class="form-label mb-1">Status</label>
+            <select asp-for="StatusFilter" class="form-select form-select-sm">
+                <option value="Pending">@T("projectImport.pending")</option>
+                <option value="Approved">@T("projectImport.approved")</option>
+                <option value="Rejected">@T("projectImport.rejected")</option>
+                <option value="All">@T("common.all")</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-sm btn-secondary">@T("common.filter")</button>
+    </form>
+</div>
+
+<div class="table-responsive">
+<table class="table table-sm table-striped table-bordered align-middle">
+    <thead>
+        <tr>
+            <th>@T("field.company")</th>
+            <th>@T("projects.projectNumber")</th>
+            <th>@T("projectImport.accountingName")</th>
+            <th>Period</th>
+            <th>Status</th>
+            <th style="min-width:420px;">Review</th>
+        </tr>
+    </thead>
+    <tbody>
+    @if (Model.ImportedProjects.Count == 0)
+    {
+        <tr><td colspan="6" class="text-muted">No matching staged projects.</td></tr>
+    }
+    else
+    {
+        @foreach (var project in Model.ImportedProjects)
+        {
+            <tr>
+                <td>@project.Company</td>
+                <td>@project.ProjectNumber</td>
+                <td>
+                    <strong>@project.ProjectName</strong>
+                    <div class="small text-muted">Last seen @project.LastSeenAt.ToLocalTime().ToString("g")</div>
+                </td>
+                <td>
+                    <div>@(project.StartTime?.ToString("d") ?? "-")</div>
+                    <div class="small text-muted">to @(project.StopTime?.ToString("d") ?? "open")</div>
+                </td>
+                <td>
+                    <span class="badge @(project.Status == "Pending" ? "bg-warning text-dark" : project.Status == "Approved" ? "bg-success" : "bg-danger")">@project.Status</span>
+                    @if (project.ReviewedAt.HasValue)
+                    {
+                        <div class="small text-muted mt-1">@T("projectImport.reviewed") @project.ReviewedAt.Value.ToLocalTime().ToString("g")</div>
+                        <div class="small text-muted">@project.ReviewedBy</div>
+                    }
+                    @if (project.ApprovedProjectId.HasValue)
+                    {
+                        <div class="small mt-1"><a asp-page="/Projects/Edit" asp-route-id="@project.ApprovedProjectId">Project #@project.ApprovedProjectId</a></div>
+                    }
+                </td>
+                <td>
+                    @if (project.Status == "Pending")
+                    {
+                        <form method="post" class="row g-2">
+                            <input type="hidden" name="ReviewId" value="@project.Id" />
+                            <input type="hidden" name="StatusFilter" value="@Model.StatusFilter" />
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1">@T("projectImport.friendlyName")</label>
+                                <input name="FriendlyName" class="form-control form-control-sm" value="@project.ProjectName" maxlength="256" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small mb-1">@T("projectImport.productionManager")</label>
+                                <input name="ProductionManager" class="form-control form-control-sm" maxlength="256" placeholder="sAMAccountName" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small mb-1">@T("projectImport.reviewComment")</label>
+                                <input name="ReviewComment" class="form-control form-control-sm" maxlength="1000" />
+                            </div>
+                            <div class="col-12 d-flex gap-2">
+                                <button type="submit" asp-page-handler="Approve" class="btn btn-sm btn-success">@T("projectImport.approve")</button>
+                                <button type="submit" asp-page-handler="Reject" class="btn btn-sm btn-outline-danger" formnovalidate>@T("projectImport.reject")</button>
+                            </div>
+                        </form>
+                    }
+                    else
+                    {
+                        @if (!string.IsNullOrWhiteSpace(project.ReviewComment))
+                        {
+                            <div>@project.ReviewComment</div>
+                        }
+                        @if (project.Status == "Rejected")
+                        {
+                            <form method="post" class="mt-2">
+                                <input type="hidden" name="ReviewId" value="@project.Id" />
+                                <input type="hidden" name="StatusFilter" value="@Model.StatusFilter" />
+                                <button type="submit" asp-page-handler="Reopen" class="btn btn-sm btn-outline-secondary">@T("projectImport.reopen")</button>
+                            </form>
+                        }
+                    }
+                </td>
+            </tr>
+        }
+    }
+    </tbody>
+</table>
+</div>

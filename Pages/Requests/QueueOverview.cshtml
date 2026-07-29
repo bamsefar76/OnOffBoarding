@@ -1,0 +1,205 @@
+﻿@page
+@model UserChangeQueueWeb.Pages.QueueOverviewModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["queue.back"] = "Back to dashboard",
+        ["queue.view"] = "Queue view",
+        ["queue.failed"] = "Failed",
+        ["queue.ready"] = "Ready",
+        ["queue.today"] = "Starting today",
+        ["queue.completed"] = "Completed",
+        ["queue.search"] = "Search",
+        ["queue.searchPlaceholder"] = "Name, account, request id or error text",
+        ["queue.apply"] = "Apply",
+        ["queue.clear"] = "Clear",
+        ["queue.none"] = "No matching requests.",
+        ["queue.request"] = "Request",
+        ["queue.user"] = "User",
+        ["queue.type"] = "Type",
+        ["queue.status"] = "Status",
+        ["queue.scheduled"] = "Scheduled",
+        ["queue.office"] = "Office",
+        ["queue.requestedBy"] = "Requested by",
+        ["queue.error"] = "Error",
+        ["queue.actions"] = "Actions",
+        ["queue.noError"] = "No error message recorded.",
+        ["queue.open"] = "Open",
+        ["queue.retry"] = "Retry",
+        ["queue.delete"] = "Delete",
+        ["queue.retryConfirm"] = "Return this request to Approved and retry it?",
+        ["queue.deleteConfirm"] = "Permanently delete this request and all related queue records? This cannot be undone.",
+        ["queue.failedTitle"] = "Failed requests",
+        ["queue.failedDescription"] = "Requests that failed during processing and may be retried.",
+        ["queue.readyTitle"] = "Ready to process",
+        ["queue.readyDescription"] = "Approved requests ready for the worker.",
+        ["queue.todayTitle"] = "Starting today",
+        ["queue.todayDescription"] = "Create requests scheduled for today.",
+        ["queue.completedTitle"] = "Recently completed",
+        ["queue.completedDescription"] = "Requests completed during the last seven days.",
+    };
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    var localizedTitle = Model.ViewMode switch
+    {
+        "failed" => T("queue.failedTitle"),
+        "ready" => T("queue.readyTitle"),
+        "today" => T("queue.todayTitle"),
+        "completed" => T("queue.completedTitle"),
+        _ => Model.PageTitle
+    };
+    var localizedDescription = Model.ViewMode switch
+    {
+        "failed" => T("queue.failedDescription"),
+        "ready" => T("queue.readyDescription"),
+        "today" => T("queue.todayDescription"),
+        "completed" => T("queue.completedDescription"),
+        _ => Model.PageDescription
+    };
+    ViewData["Title"] = localizedTitle;
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <h1 class="display-6 mb-1">@localizedTitle</h1>
+        <p class="text-muted mb-0">@localizedDescription</p>
+    </div>
+    <a class="btn btn-outline-secondary" asp-page="/Index">@T("queue.back")</a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-info">@Model.StatusMessage</div>
+}
+
+<div class="btn-group mb-3" role="group" aria-label="@T("queue.view")">
+    <a class="btn @(Model.ViewMode == "failed" ? "btn-danger" : "btn-outline-danger")" asp-page="/Requests/QueueOverview" asp-route-view="failed">@T("queue.failed")</a>
+    <a class="btn @(Model.ViewMode == "ready" ? "btn-primary" : "btn-outline-primary")" asp-page="/Requests/QueueOverview" asp-route-view="ready">@T("queue.ready")</a>
+    <a class="btn @(Model.ViewMode == "today" ? "btn-primary" : "btn-outline-primary")" asp-page="/Requests/QueueOverview" asp-route-view="today">@T("queue.today")</a>
+    <a class="btn @(Model.ViewMode == "completed" ? "btn-primary" : "btn-outline-primary")" asp-page="/Requests/QueueOverview" asp-route-view="completed">@T("queue.completed")</a>
+</div>
+
+<form method="get" class="card shadow-sm mb-4">
+    <input type="hidden" name="view" value="@Model.ViewMode" />
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-8 col-lg-5">
+                <label asp-for="Search" class="form-label">@T("queue.search")</label>
+                <input asp-for="Search" class="form-control" placeholder="@T("queue.searchPlaceholder")" />
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">@T("queue.apply")</button>
+            </div>
+            <div class="col-auto">
+                <a class="btn btn-outline-secondary" asp-page="/Requests/QueueOverview" asp-route-view="@Model.ViewMode">@T("queue.clear")</a>
+            </div>
+        </div>
+    </div>
+</form>
+
+@if (Model.Items.Count == 0)
+{
+    <div class="alert alert-success">@T("queue.none")</div>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>@T("queue.request")</th>
+                    <th>@T("queue.user")</th>
+                    <th>@T("queue.type")</th>
+                    <th>@T("queue.status")</th>
+                    <th>@T("queue.scheduled")</th>
+                    <th>@T("queue.office")</th>
+                    <th>@T("queue.requestedBy")</th>
+                    @if (Model.ViewMode == "failed")
+                    {
+                        <th style="min-width: 320px;">@T("queue.error")</th>
+                    }
+                    <th class="text-end">@T("queue.actions")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Items)
+                {
+                    <tr>
+                        <td>#@item.RequestId</td>
+                        <td>
+                            <strong>@item.DisplayName</strong>
+                            @if (!string.IsNullOrWhiteSpace(item.AccountName))
+                            {
+                                <div class="small text-muted">@item.AccountName</div>
+                            }
+                        </td>
+                        <td><span class="badge text-bg-secondary">@item.RequestType</span></td>
+                        <td>
+                            <span class="badge @(item.CanRetry ? "text-bg-danger" : "text-bg-light")">@item.Status</span>
+                        </td>
+                        <td>@(item.ExecuteAfter?.ToString("g") ?? "-")</td>
+                        <td>@(string.IsNullOrWhiteSpace(item.Office) ? "-" : item.Office)</td>
+                        <td>@(string.IsNullOrWhiteSpace(item.RequestedBy) ? "-" : item.RequestedBy)</td>
+                        @if (Model.ViewMode == "failed")
+                        {
+                            <td>
+                                @if (string.IsNullOrWhiteSpace(item.ErrorMessage))
+                                {
+                                    <span class="text-muted">@T("queue.noError")</span>
+                                }
+                                else
+                                {
+                                    <details>
+                                        <summary class="text-danger">@(
+                                            item.ErrorMessage.Length > 140
+                                                ? item.ErrorMessage[..140] + "..."
+                                                : item.ErrorMessage
+                                        )</summary>
+                                        <pre class="small mt-2 mb-0 text-wrap">@item.ErrorMessage</pre>
+                                    </details>
+                                }
+                            </td>
+                        }
+                        <td class="text-end text-nowrap">
+                            <a class="btn btn-sm btn-outline-primary"
+                               asp-page="@item.EditPage"
+                               asp-route-requestId="@item.RequestId">@T("queue.open")</a>
+
+                            @if (item.CanRetry)
+                            {
+                                <form method="post" asp-page-handler="Retry" class="d-inline">
+                                    <input type="hidden" name="requestId" value="@item.RequestId" />
+                                    <input type="hidden" name="ViewMode" value="@Model.ViewMode" />
+                                    <input type="hidden" name="Search" value="@Model.Search" />
+                                    <button type="submit"
+                                            class="btn btn-sm btn-danger"
+                                            onclick="return confirm('@T("queue.retryConfirm")');">
+                                        Retry
+                                    </button>
+                                </form>
+                            }
+
+
+                            @if (!string.Equals(item.Status, "Processing", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <form method="post" asp-page-handler="Delete" class="d-inline">
+                                    <input type="hidden" name="requestId" value="@item.RequestId" />
+                                    <input type="hidden" name="ViewMode" value="@Model.ViewMode" />
+                                    <input type="hidden" name="Search" value="@Model.Search" />
+                                    <button type="submit"
+                                            class="btn btn-sm btn-outline-danger"
+                                            onclick="return confirm('@T("queue.deleteConfirm")');">
+                                        Delete
+                                    </button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

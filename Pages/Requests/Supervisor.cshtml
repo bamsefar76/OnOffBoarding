@@ -1,0 +1,191 @@
+﻿@page
+@model SupervisorModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.yes"] = "Yes",
+        ["common.no"] = "No",
+        ["field.displayName"] = "Display name",
+        ["field.samAccountName"] = "sAMAccountName",
+        ["field.email"] = "Email",
+        ["field.title"] = "Title",
+        ["field.departmentProject"] = "Department / Project",
+        ["field.company"] = "Company",
+        ["field.enabled"] = "Enabled",
+        ["field.status"] = "Status",
+        ["field.created"] = "Created",
+        ["field.type"] = "Type",
+        ["field.target"] = "Target",
+        ["field.newAccount"] = "New account",
+        ["field.executeDate"] = "Execute date",
+        ["supervisor.title"] = "Supervisor overview",
+        ["supervisor.loggedInAs"] = "Logged in as",
+        ["supervisor.supervisorSam"] = "Supervisor sAMAccountName",
+        ["supervisor.newUserRequest"] = "New user change request",
+        ["supervisor.signOut"] = "Sign out",
+        ["supervisor.directReports"] = "Employees reporting to you",
+        ["supervisor.viewingDirectReportsFor"] = "Viewing direct reports for",
+        ["supervisor.backToMine"] = "Back to my direct reports",
+        ["supervisor.viewingYourDirectReports"] = "Viewing your direct reports.",
+        ["supervisor.noDirectReports"] = "No direct reports found.",
+        ["supervisor.orderedChanges"] = "Changes ordered by you",
+        ["supervisor.noOrderedChanges"] = "No ordered changes found.",
+        ["supervisor.managerColumnMissing"] = "Could not find a manager column in dbo.ADObjects. Expected one of: ManagerSamAccountName, ManagerSam, Manager, ManagerUserName."
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+
+    string LocalizeMessage(string? message)
+    {
+        if (string.Equals(message, textFallbacks["supervisor.managerColumnMissing"], StringComparison.Ordinal))
+        {
+            return T("supervisor.managerColumnMissing");
+        }
+
+        return message ?? string.Empty;
+    }
+
+    ViewData["Title"] = T("supervisor.title");
+}
+
+<div style="padding:10px; margin-bottom:20px; background:#f3f3f3; border:1px solid #ccc;">
+    @T("supervisor.loggedInAs"): <strong>@Model.LoginName</strong><br />
+    @T("supervisor.supervisorSam"): <strong>@Model.SamAccountName</strong>
+</div>
+
+<div style="margin-top:10px; margin-bottom:20px;">
+    <a href="/Requests/NewUser">@T("supervisor.newUserRequest")</a>
+    |
+    <a href="/logout" style="color:red; font-weight:bold;">@T("supervisor.signOut")</a>
+</div>
+
+<h2>@T("supervisor.title")</h2>
+
+@if (!string.IsNullOrWhiteSpace(Model.Message))
+{
+    <p><strong>@LocalizeMessage(Model.Message)</strong></p>
+}
+
+<h3>@T("supervisor.directReports")</h3>
+@if (!string.IsNullOrWhiteSpace(Model.ViewingManagerSamAccountName)
+    && Model.ViewingManagerSamAccountName != Model.SamAccountName)
+{
+    <p>
+        @T("supervisor.viewingDirectReportsFor"):
+        <strong>@Model.ViewingManagerSamAccountName</strong>
+        |
+        <a href="/Requests/Supervisor">@T("supervisor.backToMine")</a>
+    </p>
+}
+else
+{
+    <p>@T("supervisor.viewingYourDirectReports")</p>
+}
+@if (Model.DirectReports.Count == 0)
+{
+    <p>@T("supervisor.noDirectReports")</p>
+}
+else
+{
+    <table class="table table-striped table-bordered">
+        <thead>
+            <tr>
+                <th>@T("field.displayName")</th>
+                <th>@T("field.samAccountName")</th>
+                <th>@T("field.email")</th>
+                <th>@T("field.title")</th>
+                <th>@T("field.departmentProject")</th>
+                <th>@T("field.company")</th>
+                <th>@T("field.enabled")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var report in Model.DirectReports)
+            {
+                <tr>
+                    <td>
+                        <a href="/Requests/UserPendingChanges?user=@report.ObjectGUID">@report.DisplayName</a>
+                    </td>
+                    <td>
+                        <a href="/Requests/Supervisor?manager=@report.SamAccountName">@report.SamAccountName</a>
+                    </td>
+                    <td>@report.Mail</td>
+                    <td>@report.Title</td>
+                    <td>@report.Department</td>
+                    <td>@report.Company</td>
+                    <td>
+                        @if (report.Enabled.HasValue)
+                        {
+                            @(report.Enabled.Value ? T("common.yes") : T("common.no"))
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+<h3 style="margin-top:35px;">@T("supervisor.orderedChanges")</h3>
+
+@if (Model.OrderedChanges.Count == 0)
+{
+    <p>@T("supervisor.noOrderedChanges")</p>
+}
+else
+{
+    <table class="table table-striped table-bordered">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>@T("field.type")</th>
+                <th>@T("field.status")</th>
+                <th>@T("field.executeDate")</th>
+                <th>@T("field.target")</th>
+                <th>@T("field.newAccount")</th>
+                <th>@T("field.displayName")</th>
+                <th>@T("field.departmentProject")</th>
+                <th>@T("field.title")</th>
+                <th>@T("field.created")</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var change in Model.OrderedChanges)
+            {
+                <tr>
+                    <td>
+                        @if (!string.IsNullOrWhiteSpace(change.EditUrl))
+                        {
+                            <a href="@change.EditUrl">@change.Id</a>
+                        }
+                        else
+                        {
+                            @change.Id
+                        }
+                    </td>
+                    <td>@change.RequestType</td>
+                    <td>@change.Status</td>
+                    <td>@(change.ExecuteAfter?.ToString("d"))</td>
+                    <td>@change.TargetSamAccountName</td>
+                    <td>@change.NewSamAccountName</td>
+                    <td>
+                        @if (!string.IsNullOrWhiteSpace(change.EditUrl))
+                        {
+                            <a href="@change.EditUrl">@change.LinkText</a>
+                        }
+                        else
+                        {
+                            @change.LinkText
+                        }
+                    </td>
+                    <td>@change.Department</td>
+                    <td>@change.Title</td>
+                    <td>@(change.CreatedAt?.ToString("d"))</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}

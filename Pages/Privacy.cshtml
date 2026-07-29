@@ -1,0 +1,21 @@
+@page
+@model PrivacyModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["privacy.title"] = "Privacy",
+        ["privacy.body"] = "This application stores and processes user-change requests needed for account administration. Access is controlled by Windows authentication and page access rules."
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+
+    ViewData["Title"] = T("privacy.title");
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<p>@T("privacy.body")</p>
