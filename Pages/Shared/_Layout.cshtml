@@ -1,4 +1,4 @@
-@using UserChangeQueueWeb.Services
+﻿@using UserChangeQueueWeb.Services
 @inject PageAccessService PageAccessService
 @inject AccessScopeService AccessScopeService
 @inject UiTextService UiTextService
@@ -35,7 +35,10 @@
         ["nav.projects"] = "Projects",
         ["nav.projectList"] = "Project list",
         ["nav.projectImport"] = "Imported projects",
+        ["nav.selfService"] = "Self Service",
         ["nav.temporaryAccess"] = "Temporary access",
+        ["nav.requestLicenses"] = "Request licenses",
+        ["nav.myLicenseRequests"] = "My license requests",
         ["nav.temporaryAccessGroups"] = "Temporary access groups",
         ["nav.privacy"] = "Privacy",
         ["nav.logout"] = "Sign out",
@@ -74,6 +77,8 @@
     var canOpenProjectImport = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Projects/Import");
     var canOpenProjects = canOpenProjectList || canOpenProjectImport;
     var canOpenTemporaryAccess = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/TemporaryAccess");
+    var canOpenLicenseRequests = isAuthenticated;
+    var canOpenSelfService = canOpenTemporaryAccess || canOpenLicenseRequests;
 
     var canOpenGroupRules = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/GroupRules");
     var canOpenTranslations = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/Translations");
@@ -208,10 +213,47 @@
                             </li>
                         }
 
-                        @if (canOpenTemporaryAccess)
+                        @if (canOpenSelfService)
                         {
-                            <li class="nav-item">
-                                <a class="nav-link@(ActiveClass("/TemporaryAccess/Index"))" asp-area="" asp-page="/TemporaryAccess/Index">@T("nav.temporaryAccess")</a>
+                            <li class="nav-item dropdown">
+                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/TemporaryAccess/Index", "/LicenseRequests/Index"))"
+                                   href="#"
+                                   role="button"
+                                   data-bs-toggle="dropdown"
+                                   aria-expanded="false">
+                                    @T("nav.selfService")
+                                </a>
+                                <ul class="dropdown-menu">
+                                    @if (canOpenTemporaryAccess)
+                                    {
+                                        <li>
+                                            <a class="dropdown-item@(ActiveClass("/TemporaryAccess/Index"))"
+                                               asp-area=""
+                                               asp-page="/TemporaryAccess/Index">
+                                                @T("nav.temporaryAccess")
+                                            </a>
+                                        </li>
+                                    }
+                                    @if (canOpenLicenseRequests)
+                                    {
+                                        <li>
+                                            <a class="dropdown-item@(ActiveClass("/LicenseRequests/Index"))"
+                                               asp-area=""
+                                               asp-page="/LicenseRequests/Index"
+                                               asp-fragment="new-license-request">
+                                                @T("nav.requestLicenses")
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item@(ActiveClass("/LicenseRequests/Index"))"
+                                               asp-area=""
+                                               asp-page="/LicenseRequests/Index"
+                                               asp-fragment="my-license-applications">
+                                                @T("nav.myLicenseRequests")
+                                            </a>
+                                        </li>
+                                    }
+                                </ul>
                             </li>
                         }
 

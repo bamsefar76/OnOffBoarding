@@ -255,6 +255,7 @@ else
         </div>
     }
 
+    <section id="new-license-request" class="scroll-margin-top">
     <form method="post" asp-page-handler="Submit">
         <div class="row g-3 mb-4">
             @foreach (var license in Model.Licenses)
@@ -315,9 +316,11 @@ else
             Submit to manager
         </button>
     </form>
+    </section>
 
     <hr class="my-5" />
 
+    <section id="my-license-applications" class="scroll-margin-top">
     <h2 class="h4">My applications</h2>
 
     @if (Model.MyApplications.Count == 0)
@@ -370,7 +373,12 @@ else
             }
         </div>
     }
+    </section>
 }
+
+<style>
+    .scroll-margin-top { scroll-margin-top: 5rem; }
+</style>
 
 @section Scripts {
 <script>
