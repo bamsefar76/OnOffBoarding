@@ -117,18 +117,27 @@
 }
 
 <!DOCTYPE html>
-<html lang="@uiText.LanguageCode">
+<html lang="@uiText.LanguageCode" data-bs-theme="light">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - @T("app.title")</title>
+    <script>
+        (() => {
+            const saved = localStorage.getItem("onoffboarding-theme");
+            const theme = saved === "dark" || saved === "light"
+                ? saved
+                : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+            document.documentElement.setAttribute("data-bs-theme", theme);
+        })();
+    </script>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/UserChangeQueueWeb.styles.css" asp-append-version="true" />
 </head>
 <body>
     <header>
-        <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom box-shadow mb-3">
+        <nav class="navbar navbar-expand-lg border-bottom box-shadow mb-3">
             <div class="container-fluid">
                 <a class="navbar-brand" asp-area="" asp-page="/Index">@T("app.title")</a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
@@ -138,13 +147,13 @@
                 <div class="navbar-collapse collapse d-lg-inline-flex justify-content-between">
                     <ul class="navbar-nav flex-grow-1">
                         <li class="nav-item">
-                            <a class="nav-link text-dark@(ActiveClass("/Index"))" asp-area="" asp-page="/Index">@T("nav.home")</a>
+                            <a class="nav-link@(ActiveClass("/Index"))" asp-area="" asp-page="/Index">@T("nav.home")</a>
                         </li>
 
                         @if (canOpenOrganisation)
                         {
                             <li class="nav-item">
-                                <a class="nav-link text-dark@(ActiveClass("/Organisation/Tree"))" asp-area="" asp-page="/Organisation/Tree">@T("nav.organisation")</a>
+                                <a class="nav-link@(ActiveClass("/Organisation/Tree"))" asp-area="" asp-page="/Organisation/Tree">@T("nav.organisation")</a>
                             </li>
                         }
 
@@ -202,7 +211,7 @@
                         @if (canOpenTemporaryAccess)
                         {
                             <li class="nav-item">
-                                <a class="nav-link text-dark@(ActiveClass("/TemporaryAccess/Index"))" asp-area="" asp-page="/TemporaryAccess/Index">@T("nav.temporaryAccess")</a>
+                                <a class="nav-link@(ActiveClass("/TemporaryAccess/Index"))" asp-area="" asp-page="/TemporaryAccess/Index">@T("nav.temporaryAccess")</a>
                             </li>
                         }
 
@@ -280,8 +289,18 @@
                     @if (isAuthenticated)
                     {
                         <ul class="navbar-nav align-items-center">
+                            <li class="nav-item me-2">
+                                <button type="button"
+                                        id="themeToggle"
+                                        class="btn btn-outline-secondary btn-sm"
+                                        aria-label="Switch colour theme"
+                                        title="Switch colour theme">
+                                    <span id="themeToggleIcon" aria-hidden="true">◐</span>
+                                    <span id="themeToggleText" class="d-none d-xl-inline ms-1">Theme</span>
+                                </button>
+                            </li>
                             <li class="nav-item">
-                                <a class="nav-link text-dark" asp-page="/MyProfile/Index">@accessScope.DisplayName</a>
+                                <a class="nav-link" asp-page="/MyProfile/Index">@accessScope.DisplayName</a>
                             </li>
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle text-dark" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="@T("nav.accountMenu")">

@@ -1,5 +1,7 @@
 html {
   font-size: 14px;
+  position: relative;
+  min-height: 100%;
 }
 
 @media (min-width: 768px) {
@@ -8,15 +10,375 @@ html {
   }
 }
 
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
-  box-shadow: 0 0 0 0.1rem white, 0 0 0 0.25rem #258cfb;
-}
-
-html {
-  position: relative;
-  min-height: 100%;
-}
-
 body {
   margin-bottom: 60px;
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+}
+
+/*
+  Theme-aware focus indication.
+  Avoids the old hard-coded white focus ring, which disappeared on light
+  surfaces and looked too bright on dark surfaces.
+*/
+.btn:focus,
+.btn:active:focus,
+.btn-link.nav-link:focus,
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus,
+.page-link:focus {
+  box-shadow:
+    0 0 0 .1rem var(--bs-body-bg),
+    0 0 0 .25rem rgba(var(--bs-primary-rgb), .55);
+}
+
+/* Improve muted text contrast in both themes. */
+:root,
+[data-bs-theme="light"] {
+  --app-muted-color: #5b6470;
+  --app-subtle-bg: #f3f5f7;
+  --app-subtle-border: #cbd1d8;
+  --app-card-header-bg: #f6f7f9;
+  --app-link-color: #005fc7;
+  --app-link-hover-color: #004a9e;
+}
+
+[data-bs-theme="dark"] {
+  color-scheme: dark;
+
+  --bs-body-bg: #111820;
+  --bs-body-color: #e8edf2;
+  --bs-emphasis-color: #ffffff;
+  --bs-secondary-color: #c1c9d2;
+  --bs-secondary-bg: #252f39;
+  --bs-tertiary-color: #b7c0ca;
+  --bs-tertiary-bg: #1b252f;
+  --bs-border-color: #465361;
+  --bs-border-color-translucent: rgba(255, 255, 255, .18);
+
+  --bs-link-color: #78b7ff;
+  --bs-link-hover-color: #a7d0ff;
+
+  --bs-card-bg: #1a232c;
+  --bs-card-border-color: #465361;
+
+  --app-muted-color: #bdc7d1;
+  --app-subtle-bg: #222d37;
+  --app-subtle-border: #526170;
+  --app-card-header-bg: #222d37;
+  --app-link-color: #78b7ff;
+  --app-link-hover-color: #a7d0ff;
+}
+
+a {
+  color: var(--app-link-color);
+}
+
+a:hover,
+a:focus {
+  color: var(--app-link-hover-color);
+}
+
+.text-muted,
+.text-body-secondary,
+.form-text,
+small.text-muted {
+  color: var(--app-muted-color) !important;
+}
+
+/*
+  Neutralize forced light-only Bootstrap utility classes when dark mode is
+  active. These classes occur across the Razor pages and were the main source
+  of white panels with nearly white text.
+*/
+[data-bs-theme="dark"] .bg-white,
+[data-bs-theme="dark"] .bg-light,
+[data-bs-theme="dark"] .card-header.bg-white,
+[data-bs-theme="dark"] .card-header.bg-light,
+[data-bs-theme="dark"] .table-light,
+[data-bs-theme="dark"] .list-group-item-light {
+  --bs-bg-opacity: 1;
+  background-color: var(--app-card-header-bg) !important;
+  color: var(--bs-body-color) !important;
+}
+
+[data-bs-theme="dark"] .text-dark {
+  color: var(--bs-body-color) !important;
+}
+
+[data-bs-theme="dark"] .text-bg-light,
+[data-bs-theme="dark"] .badge.bg-light,
+[data-bs-theme="dark"] .badge.text-bg-light {
+  color: #f2f6fa !important;
+  background-color: #344250 !important;
+  border: 1px solid #657586;
+}
+
+[data-bs-theme="light"] .text-bg-light,
+[data-bs-theme="light"] .badge.bg-light,
+[data-bs-theme="light"] .badge.text-bg-light {
+  color: #1c2630 !important;
+  background-color: #e9edf1 !important;
+  border: 1px solid #b8c0c8;
+}
+
+/* Cards and panel-like components */
+.card,
+.modal-content,
+.offcanvas,
+.dropdown-menu,
+.list-group-item,
+.accordion-item {
+  background-color: var(--bs-card-bg, var(--bs-body-bg));
+  color: var(--bs-body-color);
+  border-color: var(--bs-border-color);
+}
+
+.card-header,
+.card-footer,
+.modal-header,
+.modal-footer,
+.accordion-button {
+  background-color: var(--app-card-header-bg);
+  color: var(--bs-body-color);
+  border-color: var(--bs-border-color);
+}
+
+.accordion-button:not(.collapsed) {
+  color: var(--bs-emphasis-color);
+  background-color: rgba(var(--bs-primary-rgb), .18);
+}
+
+/* Tables */
+.table {
+  --bs-table-color: var(--bs-body-color);
+  --bs-table-bg: transparent;
+  --bs-table-border-color: var(--bs-border-color);
+  --bs-table-striped-color: var(--bs-body-color);
+  --bs-table-striped-bg: rgba(127, 143, 159, .10);
+  --bs-table-hover-color: var(--bs-body-color);
+  --bs-table-hover-bg: rgba(var(--bs-primary-rgb), .12);
+  color: var(--bs-body-color);
+}
+
+.table > :not(caption) > * > * {
+  color: inherit;
+  background-color: transparent;
+  border-color: var(--bs-border-color);
+}
+
+.table thead th {
+  color: var(--bs-emphasis-color);
+  background-color: var(--app-subtle-bg);
+}
+
+.table-active,
+.table > .table-active {
+  --bs-table-bg-state: rgba(var(--bs-primary-rgb), .18);
+}
+
+/* Forms */
+.form-control,
+.form-select,
+.form-check-input,
+.input-group-text {
+  color: var(--bs-body-color);
+  background-color: var(--bs-body-bg);
+  border-color: var(--app-subtle-border);
+}
+
+.form-control::placeholder {
+  color: var(--app-muted-color);
+  opacity: 1;
+}
+
+.form-control:disabled,
+.form-select:disabled,
+.form-control[readonly] {
+  color: var(--app-muted-color);
+  background-color: var(--app-subtle-bg);
+  opacity: 1;
+}
+
+.form-select option {
+  color: var(--bs-body-color);
+  background-color: var(--bs-body-bg);
+}
+
+/* Navigation and menus */
+.navbar,
+.dropdown-menu {
+  background-color: var(--bs-body-bg) !important;
+  color: var(--bs-body-color);
+  border-color: var(--bs-border-color);
+}
+
+.navbar-brand,
+.navbar .nav-link,
+.dropdown-item,
+.dropdown-item-text,
+.dropdown-header {
+  color: var(--bs-body-color) !important;
+}
+
+.navbar .nav-link:hover,
+.navbar .nav-link:focus,
+.dropdown-item:hover,
+.dropdown-item:focus {
+  color: var(--bs-emphasis-color) !important;
+  background-color: rgba(var(--bs-primary-rgb), .16);
+}
+
+.navbar .nav-link.active,
+.dropdown-item.active,
+.dropdown-item:active {
+  color: #fff !important;
+  background-color: var(--bs-primary);
+}
+
+.navbar-toggler {
+  border-color: var(--bs-border-color);
+}
+
+[data-bs-theme="dark"] .navbar-toggler-icon {
+  filter: invert(1) grayscale(100%) brightness(180%);
+}
+
+/* Buttons */
+.btn-outline-secondary,
+.btn-outline-dark {
+  color: var(--bs-body-color);
+  border-color: #738293;
+}
+
+.btn-outline-secondary:hover,
+.btn-outline-dark:hover {
+  color: #fff;
+  background-color: #526170;
+  border-color: #768697;
+}
+
+/* Alerts: explicitly keep readable foreground/background combinations. */
+[data-bs-theme="dark"] .alert-info {
+  color: #d9f1ff;
+  background-color: #15384a;
+  border-color: #2d6c87;
+}
+
+[data-bs-theme="dark"] .alert-warning {
+  color: #fff0c7;
+  background-color: #4b3a12;
+  border-color: #8b7028;
+}
+
+[data-bs-theme="dark"] .alert-danger {
+  color: #ffd9dd;
+  background-color: #4c2027;
+  border-color: #8f3c49;
+}
+
+[data-bs-theme="dark"] .alert-success {
+  color: #d9f6e3;
+  background-color: #183d29;
+  border-color: #347a50;
+}
+
+/* Pagination */
+.page-link {
+  color: var(--app-link-color);
+  background-color: var(--bs-body-bg);
+  border-color: var(--bs-border-color);
+}
+
+.page-link:hover {
+  color: var(--app-link-hover-color);
+  background-color: var(--app-subtle-bg);
+}
+
+/* Code and preformatted output */
+code {
+  color: #d63384;
+}
+
+[data-bs-theme="dark"] code {
+  color: #ff8fc7;
+}
+
+pre,
+code,
+kbd,
+samp {
+  background-color: var(--app-subtle-bg);
+}
+
+pre {
+  color: var(--bs-body-color);
+  border: 1px solid var(--bs-border-color);
+  border-radius: .375rem;
+  padding: .75rem;
+}
+
+/* Footer and borders */
+.border-top {
+  border-top-color: var(--bs-border-color) !important;
+}
+
+.border-bottom {
+  border-bottom-color: var(--bs-border-color) !important;
+}
+
+.box-shadow {
+  box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .12);
+}
+
+.footer {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  white-space: nowrap;
+  line-height: 60px;
+}
+
+/* Theme switch */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  min-height: 2.25rem;
+}
+
+.theme-toggle .form-check-input {
+  cursor: pointer;
+}
+
+.theme-toggle-label {
+  color: var(--bs-body-color);
+  white-space: nowrap;
+}
+
+/*
+  Catch legacy inline white backgrounds in dark mode without affecting
+  controls whose backgrounds are managed above.
+*/
+[data-bs-theme="dark"] [style*="background:#fff" i],
+[data-bs-theme="dark"] [style*="background: #fff" i],
+[data-bs-theme="dark"] [style*="background-color:#fff" i],
+[data-bs-theme="dark"] [style*="background-color: #fff" i],
+[data-bs-theme="dark"] [style*="background:white" i],
+[data-bs-theme="dark"] [style*="background: white" i] {
+  background-color: var(--app-card-header-bg) !important;
+  color: var(--bs-body-color) !important;
+}
+
+/* Respect users who prefer less animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
