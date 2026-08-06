@@ -1,4 +1,4 @@
-@page
+﻿@page
 @model UserChangeQueueWeb.Pages.Organisation.TreeModel
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
@@ -36,35 +36,72 @@
 
     .org-tree {
         display: grid;
-        gap: .45rem;
+        gap: .6rem;
     }
 
     .org-node {
         --depth: 0;
-        margin-left: calc(var(--depth) * 1.65rem);
-        border: 1px solid #dee2e6;
-        border-radius: .65rem;
-        background: #fff;
-        padding: .7rem .85rem;
+        position: relative;
+        margin-left: calc(var(--depth) * 1.5rem);
+        border: 1px solid var(--bs-border-color);
+        border-radius: .75rem;
+        background: var(--bs-tertiary-bg);
+        color: var(--bs-body-color);
+        padding: .8rem .95rem;
         display: grid;
         grid-template-columns: auto minmax(0, 1fr) auto;
         align-items: center;
         gap: .7rem;
+        box-shadow: 0 .1rem .3rem rgba(0, 0, 0, .08);
+        transition:
+            border-color .15s ease,
+            background-color .15s ease,
+            box-shadow .15s ease;
     }
 
     .org-node[data-depth="0"] {
-        border-color: #adb5bd;
-        box-shadow: 0 .15rem .4rem rgba(0, 0, 0, .06);
+        background: var(--bs-secondary-bg);
+        border-color: rgba(var(--bs-primary-rgb), .5);
+        box-shadow: 0 .2rem .55rem rgba(0, 0, 0, .12);
+    }
+
+    .org-node:hover {
+        border-color: rgba(var(--bs-primary-rgb), .65);
+        box-shadow: 0 .25rem .65rem rgba(0, 0, 0, .12);
+    }
+
+    .org-node[data-depth]:not([data-depth="0"])::before {
+        content: "";
+        position: absolute;
+        left: -.85rem;
+        top: 50%;
+        width: .7rem;
+        border-top: 1px solid var(--bs-border-color);
     }
 
     .org-toggle {
         width: 2rem;
         height: 2rem;
-        border: 0;
+        border: 1px solid var(--bs-border-color);
         border-radius: 50%;
-        background: #eef1f4;
+        background: var(--bs-secondary-bg);
+        color: var(--bs-body-color);
         font-weight: 700;
         line-height: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition:
+            background-color .15s ease,
+            border-color .15s ease,
+            color .15s ease;
+    }
+
+    .org-toggle:hover,
+    .org-toggle:focus-visible {
+        border-color: var(--bs-primary);
+        background: rgba(var(--bs-primary-rgb), .16);
+        color: var(--bs-emphasis-color);
     }
 
     .org-toggle-placeholder {
@@ -75,10 +112,11 @@
     .org-name {
         font-weight: 650;
         font-size: 1.02rem;
+        color: var(--bs-emphasis-color);
     }
 
     .org-meta {
-        color: #6c757d;
+        color: var(--bs-secondary-color);
         font-size: .9rem;
         overflow-wrap: anywhere;
     }
@@ -93,6 +131,9 @@
 
     .org-count {
         white-space: nowrap;
+        color: var(--bs-body-color) !important;
+        background: var(--bs-secondary-bg) !important;
+        border: 1px solid var(--bs-border-color);
     }
 
     .org-hidden {
@@ -101,8 +142,13 @@
 
     @@media (max-width: 767px) {
         .org-node {
-            margin-left: calc(var(--depth) * .75rem);
+            margin-left: calc(var(--depth) * .65rem);
             grid-template-columns: auto minmax(0, 1fr);
+        }
+
+        .org-node[data-depth]:not([data-depth="0"])::before {
+            left: -.45rem;
+            width: .35rem;
         }
 
         .org-actions {
@@ -115,7 +161,7 @@
 <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
     <div>
         <h1 class="mb-1">@T("org.title")</h1>
-        <div class="text-muted">
+        <div class="text-body-secondary">
             @if (Model.HasFullTreeAccess)
             {
                 <span>@T("org.full")</span>
@@ -173,7 +219,7 @@ else
                      data-search="@searchable">
                 @if (node.HasChildren)
                 {
-                    <button type="button" class="org-toggle" aria-label="Collapse @node.DisplayName" aria-expanded="true">−</button>
+                    <button type="button" class="org-toggle" aria-label="Collapse @node.DisplayName" aria-expanded="true">âˆ’</button>
                 }
                 else
                 {
@@ -272,7 +318,7 @@ else
         }
         const button = node.querySelector('.org-toggle');
         if (button) {
-            button.textContent = '−';
+            button.textContent = 'âˆ’';
             button.setAttribute('aria-expanded', 'true');
             button.setAttribute('aria-label', `${collapseLabel} ${node.querySelector('.org-name').textContent}`);
         }
@@ -290,7 +336,7 @@ else
             node.classList.remove('org-hidden');
             const button = node.querySelector('.org-toggle');
             if (button) {
-                button.textContent = '−';
+                button.textContent = 'âˆ’';
                 button.setAttribute('aria-expanded', 'true');
             }
         }
