@@ -1,0 +1,403 @@
+﻿@page
+@model UserChangeQueueWeb.Pages.LicenseRequests.IndexModel
+@{
+    ViewData["Title"] = Model.It
+        ? "License review"
+        : Model.Review.HasValue
+            ? "Manager review"
+            : "License applications";
+}
+
+@if (Model.Review.HasValue)
+{
+    <h1 class="h2 mb-4">Review license application</h1>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="alert alert-success">@Model.StatusMessage</div>
+    }
+
+    @if (Model.ReviewApplication is not null)
+    {
+        var application = Model.ReviewApplication;
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-between gap-2">
+                    <h2 class="h5">Application #@application.Id</h2>
+                    <span class="badge text-bg-secondary">@application.Status</span>
+                </div>
+
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Requested by</dt>
+                    <dd class="col-sm-9">@application.UserName</dd>
+
+                    <dt class="col-sm-3">Licenses</dt>
+                    <dd class="col-sm-9">@Html.Raw(application.LicenseHtml)</dd>
+
+                    <dt class="col-sm-3">Business reason</dt>
+                    <dd class="col-sm-9">@application.BusinessReason</dd>
+
+                    @if (!string.IsNullOrWhiteSpace(application.ManagerDecision))
+                    {
+                        <dt class="col-sm-3">Decision</dt>
+                        <dd class="col-sm-9">@application.ManagerDecision</dd>
+
+                        <dt class="col-sm-3">Reason</dt>
+                        <dd class="col-sm-9">@application.ManagerReason</dd>
+                    }
+                </dl>
+            </div>
+        </div>
+
+        @if (application.Status == "AwaitingManager")
+        {
+            <form method="post">
+                <input type="hidden" name="id" value="@application.Id" />
+
+                <div class="mb-3">
+                    <label asp-for="DecisionReason" class="form-label">
+                        Decision reason
+                    </label>
+                    <textarea asp-for="DecisionReason"
+                              class="form-control"
+                              rows="5"
+                              required></textarea>
+                    <div class="form-text">
+                        Required for both approval and rejection.
+                    </div>
+                    <span asp-validation-for="DecisionReason"
+                          class="text-danger"></span>
+                </div>
+
+                <button class="btn btn-success"
+                        asp-page-handler="ManagerApprove">
+                    Approve and send to IT
+                </button>
+
+                <button class="btn btn-outline-danger"
+                        asp-page-handler="ManagerReject">
+                    Reject
+                </button>
+            </form>
+        }
+    }
+}
+else if (Model.It)
+{
+    <h1 class="h2 mb-1">License review</h1>
+    <p class="text-body-secondary mb-4">
+        Review manager-approved applications and record manual IT decisions.
+    </p>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="alert alert-info">@Model.StatusMessage</div>
+    }
+
+    @if (Model.ItApplications.Count == 0)
+    {
+        <div class="alert alert-success">
+            No applications need IT review.
+        </div>
+    }
+    else
+    {
+        <div class="vstack gap-4">
+            @foreach (var application in Model.ItApplications)
+            {
+                <article class="card">
+                    <div class="card-header d-flex justify-content-between gap-2">
+                        <strong>
+                            Application #@application.Id · @application.UserName
+                        </strong>
+                        <span class="badge text-bg-secondary">
+                            @application.Status
+                        </span>
+                    </div>
+
+                    <div class="card-body">
+                        <dl class="row">
+                            <dt class="col-sm-3">Requester</dt>
+                            <dd class="col-sm-9">
+                                @application.UserName (@application.UserEmail)
+                            </dd>
+
+                            <dt class="col-sm-3">Manager</dt>
+                            <dd class="col-sm-9">@application.ManagerName</dd>
+
+                            <dt class="col-sm-3">Business reason</dt>
+                            <dd class="col-sm-9">@application.BusinessReason</dd>
+
+                            <dt class="col-sm-3">Manager reason</dt>
+                            <dd class="col-sm-9">@application.ManagerReason</dd>
+                        </dl>
+
+                        <div class="table-responsive">
+                            <table class="table align-middle">
+                                <thead>
+                                    <tr>
+                                        <th>License</th>
+                                        <th>Status</th>
+                                        <th>Reason</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var item in application.Items)
+                                    {
+                                        <tr>
+                                            <td>@item.Name</td>
+                                            <td>@item.Status</td>
+                                            <td>@item.Reason</td>
+                                            <td>
+                                                @if (item.Status == "Pending")
+                                                {
+                                                    <div class="d-flex flex-wrap gap-2">
+                                                        <form method="post"
+                                                              asp-page-handler="ItApprove">
+                                                            <input type="hidden"
+                                                                   name="applicationId"
+                                                                   value="@application.Id" />
+                                                            <input type="hidden"
+                                                                   name="itemId"
+                                                                   value="@item.Id" />
+                                                            <button class="btn btn-sm btn-success">
+                                                                Approve
+                                                            </button>
+                                                        </form>
+
+                                                        <form method="post"
+                                                              asp-page-handler="ItReject"
+                                                              class="d-flex gap-2">
+                                                            <input type="hidden"
+                                                                   name="applicationId"
+                                                                   value="@application.Id" />
+                                                            <input type="hidden"
+                                                                   name="itemId"
+                                                                   value="@item.Id" />
+                                                            <input type="text"
+                                                                   name="DecisionReason"
+                                                                   class="form-control form-control-sm"
+                                                                   placeholder="Required rejection reason"
+                                                                   required />
+                                                            <button class="btn btn-sm btn-outline-danger">
+                                                                Reject
+                                                            </button>
+                                                        </form>
+                                                    </div>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        @if (application.Status is "Approved" or "PartiallyApproved")
+                        {
+                            <form method="post"
+                                  asp-page-handler="Complete"
+                                  class="mt-3">
+                                <input type="hidden"
+                                       name="applicationId"
+                                       value="@application.Id" />
+                                <button class="btn btn-primary">
+                                    Mark approved licenses completed
+                                </button>
+                            </form>
+                        }
+                    </div>
+                </article>
+            }
+        </div>
+    }
+}
+else
+{
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <h1 class="h2 mb-1">License applications</h1>
+            <p class="text-body-secondary mb-0">
+                Request one or more licenses and follow the approval process.
+            </p>
+        </div>
+
+        <a asp-page="/LicenseRequests/Index"
+           asp-route-it="true"
+           class="btn btn-outline-secondary">
+            IT review
+        </a>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    {
+        <div class="alert alert-success">@Model.StatusMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger">@Model.ErrorMessage</div>
+    }
+
+    <div asp-validation-summary="All" class="text-danger mb-3"></div>
+
+    @if (Model.CurrentUser is not null)
+    {
+        <div class="card mb-4">
+            <div class="card-body">
+                <strong>Requested for:</strong>
+                @Model.CurrentUser.DisplayName
+                <br />
+                <strong>Manager:</strong>
+                @Model.CurrentUser.ManagerName
+            </div>
+        </div>
+    }
+
+    <form method="post" asp-page-handler="Submit">
+        <div class="row g-3 mb-4">
+            @foreach (var license in Model.Licenses)
+            {
+                var id = $"license-{license.Id}";
+
+                <div class="col-md-6 col-xl-4">
+                    <div class="card h-100 license-card">
+                        <div class="card-body">
+                            <div class="form-check">
+                                <input class="form-check-input license-box"
+                                       type="checkbox"
+                                       name="SelectedLicenseIds"
+                                       value="@license.Id"
+                                       id="@id"
+                                       data-family="@license.ProductFamily"
+                                       checked="@Model.SelectedLicenseIds.Contains(license.Id)" />
+
+                                <label class="form-check-label fw-semibold"
+                                       for="@id">
+                                    @license.Name
+                                </label>
+                            </div>
+
+                            <div class="small text-body-secondary mt-2">
+                                @license.Description
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(license.ProductFamily))
+                            {
+                                <div class="small mt-2">
+                                    Family: @license.ProductFamily
+                                    @if (license.LicenseLevel.HasValue)
+                                    {
+                                        <span> · Level @license.LicenseLevel</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="mb-3">
+            <label asp-for="BusinessReason" class="form-label">
+                Business reason
+            </label>
+            <textarea asp-for="BusinessReason"
+                      class="form-control"
+                      rows="5"
+                      required></textarea>
+            <span asp-validation-for="BusinessReason"
+                  class="text-danger"></span>
+        </div>
+
+        <button class="btn btn-primary" type="submit">
+            Submit to manager
+        </button>
+    </form>
+
+    <hr class="my-5" />
+
+    <h2 class="h4">My applications</h2>
+
+    @if (Model.MyApplications.Count == 0)
+    {
+        <div class="alert alert-secondary">
+            No applications found.
+        </div>
+    }
+    else
+    {
+        <div class="vstack gap-3">
+            @foreach (var application in Model.MyApplications)
+            {
+                <article class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between gap-2">
+                            <h3 class="h5">
+                                Application #@application.Id
+                            </h3>
+                            <span class="badge text-bg-secondary">
+                                @application.Status
+                            </span>
+                        </div>
+
+                        <dl class="row mb-0">
+                            <dt class="col-sm-3">Licenses</dt>
+                            <dd class="col-sm-9">
+                                @string.Join(", ", application.Items.Select(x => x.Name))
+                            </dd>
+
+                            <dt class="col-sm-3">Submitted</dt>
+                            <dd class="col-sm-9">
+                                @application.SubmittedAt.ToString("dd.MM.yyyy HH:mm")
+                            </dd>
+
+                            <dt class="col-sm-3">Business reason</dt>
+                            <dd class="col-sm-9">@application.BusinessReason</dd>
+
+                            @if (!string.IsNullOrWhiteSpace(application.ManagerDecision))
+                            {
+                                <dt class="col-sm-3">Manager decision</dt>
+                                <dd class="col-sm-9">@application.ManagerDecision</dd>
+
+                                <dt class="col-sm-3">Manager reason</dt>
+                                <dd class="col-sm-9">@application.ManagerReason</dd>
+                            }
+                        </dl>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+}
+
+@section Scripts {
+<script>
+(() => {
+    const boxes = [...document.querySelectorAll(".license-box")];
+
+    function refresh() {
+        const selectedFamilies = new Set(
+            boxes
+                .filter(x => x.checked && x.dataset.family)
+                .map(x => x.dataset.family)
+        );
+
+        for (const box of boxes) {
+            const disabled =
+                box.dataset.family &&
+                selectedFamilies.has(box.dataset.family) &&
+                !box.checked;
+
+            box.disabled = disabled;
+            box.closest(".license-card")
+                ?.classList.toggle("opacity-50", disabled);
+        }
+    }
+
+    boxes.forEach(x => x.addEventListener("change", refresh));
+    refresh();
+})();
+</script>
+}
