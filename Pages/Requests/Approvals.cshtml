@@ -1,6 +1,5 @@
-@page
+﻿@page
 @model ApprovalsModel
-@using System.Globalization
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
 @{
@@ -18,12 +17,14 @@
         ["common.office"] = "Office",
         ["common.computer"] = "Computer",
         ["common.select"] = "Select",
+        ["common.status"] = "Status",
+        ["common.actions"] = "Actions",
         ["field.employeeType"] = "Employee type",
-        ["field.officeLicense"] = "Office licence",
+        ["field.officeLicense"] = "Office license",
         ["field.accessCardRequired"] = "Access card",
         ["field.executeAfter"] = "Start date",
         ["approvals.title"] = "Pending approvals",
-        ["approvals.help"] = "Review pending requests before they are processed. Requests with a future start date remain approved but wait until that date.",
+        ["approvals.help"] = "Review and approve pending user requests.",
         ["approvals.requestType"] = "Request type",
         ["approvals.requestedByContains"] = "Requested by contains",
         ["approvals.noPending"] = "No pending requests need approval.",
@@ -36,133 +37,27 @@
         ["approvals.details"] = "Details",
         ["approvals.requestedBy"] = "Requested by",
         ["approvals.created"] = "Created",
-        ["approvals.waitUntilTime"] = "Approved request waits until this date.",
+        ["approvals.waitUntilTime"] = "Approved requests wait until this time.",
         ["approvals.actions"] = "Approval actions",
         ["approvals.approve"] = "Approve",
         ["approvals.reject"] = "Reject",
-        ["approvals.dueNow"] = "Ready now",
-        ["approvals.future"] = "Future request",
         ["approvals.openRequest"] = "Open request",
-        ["approvals.bulkActions"] = "Bulk actions"
+        ["approvals.futureRequest"] = "Future request",
+        ["approvals.requestNumber"] = "Request #{0}"
     };
 
     var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
     ViewData["Title"] = uiText.T("approvals.title", textFallbacks["approvals.title"]);
 
     string T(string key) => uiText.T(key, textFallbacks[key]);
-    string F(string key, params object[] args) => string.Format(uiText.T(key, textFallbacks[key]), args);
+    string F(string key, params object[] args) =>
+        string.Format(uiText.T(key, textFallbacks[key]), args);
 
     var rejectSelectedConfirm = T("approvals.confirmRejectSelected");
     var approvalActionsText = T("approvals.actions");
 }
 
-<style>
-    .approval-toolbar {
-        position: sticky;
-        top: .5rem;
-        z-index: 20;
-        background: var(--bs-body-bg);
-        border: 1px solid var(--bs-border-color);
-        border-radius: .75rem;
-        padding: .75rem;
-        box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .08);
-    }
-
-    .approval-card {
-        border: 1px solid var(--bs-border-color);
-        border-radius: .75rem;
-        background: var(--bs-card-bg, var(--bs-body-bg));
-        color: var(--bs-body-color);
-        overflow: hidden;
-    }
-
-    .approval-card.future {
-        border-left: .35rem solid var(--bs-warning);
-    }
-
-    .approval-card.due {
-        border-left: .35rem solid var(--bs-success);
-    }
-
-    .approval-card-header {
-        display: grid;
-        grid-template-columns: auto minmax(0, 1fr) auto;
-        align-items: start;
-        gap: .75rem;
-        padding: 1rem;
-        background: var(--bs-tertiary-bg);
-        border-bottom: 1px solid var(--bs-border-color);
-    }
-
-    .approval-card-body {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 1rem;
-        padding: 1rem;
-    }
-
-    .approval-field-label {
-        display: block;
-        margin-bottom: .2rem;
-        color: var(--bs-secondary-color);
-        font-size: .78rem;
-        font-weight: 700;
-        letter-spacing: .025em;
-        text-transform: uppercase;
-    }
-
-    .approval-field-value {
-        color: var(--bs-body-color);
-        overflow-wrap: anywhere;
-    }
-
-    .approval-detail-list {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: .4rem 1rem;
-        margin: 0;
-    }
-
-    .approval-detail-list > div {
-        min-width: 0;
-    }
-
-    .approval-actions {
-        display: flex;
-        gap: .5rem;
-        align-items: center;
-        justify-content: flex-end;
-        flex-wrap: wrap;
-    }
-
-    @@media (max-width: 992px) {
-        .approval-card-body {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-    }
-
-    @@media (max-width: 576px) {
-        .approval-card-header {
-            grid-template-columns: auto minmax(0, 1fr);
-        }
-
-        .approval-card-header .approval-actions {
-            grid-column: 1 / -1;
-            justify-content: stretch;
-        }
-
-        .approval-card-header .approval-actions .btn {
-            flex: 1 1 auto;
-        }
-
-        .approval-card-body,
-        .approval-detail-list {
-            grid-template-columns: 1fr;
-        }
-    }
-</style>
-
-<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
         <h1 class="h2 mb-1">@T("approvals.title")</h1>
         <p class="text-body-secondary mb-0">@T("approvals.help")</p>
@@ -174,23 +69,25 @@
     <div class="alert alert-info" role="alert">@Model.StatusMessage</div>
 }
 
-<form method="get" class="card card-body mb-3">
-    <div class="row gy-3 gx-3 align-items-end">
-        <div class="col-sm-6 col-lg-3">
-            <label asp-for="RequestType" class="form-label">@T("approvals.requestType")</label>
-            <select asp-for="RequestType" class="form-select">
-                <option value="">@T("common.all")</option>
-                <option value="CREATE">CREATE</option>
-                <option value="UPDATE">UPDATE</option>
-            </select>
-        </div>
-        <div class="col-sm-6 col-lg-4">
-            <label asp-for="RequestedBy" class="form-label">@T("approvals.requestedByContains")</label>
-            <input asp-for="RequestedBy" class="form-control" />
-        </div>
-        <div class="col-12 col-lg-auto d-flex gap-2">
-            <button type="submit" class="btn btn-secondary">@T("common.filter")</button>
-            <a asp-page="/Requests/Approvals" class="btn btn-outline-secondary">@T("common.clear")</a>
+<form method="get" class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-sm-6 col-lg-3">
+                <label asp-for="RequestType" class="form-label">@T("approvals.requestType")</label>
+                <select asp-for="RequestType" class="form-select">
+                    <option value="">@T("common.all")</option>
+                    <option value="CREATE">CREATE</option>
+                    <option value="UPDATE">UPDATE</option>
+                </select>
+            </div>
+            <div class="col-sm-6 col-lg-4">
+                <label asp-for="RequestedBy" class="form-label">@T("approvals.requestedByContains")</label>
+                <input asp-for="RequestedBy" class="form-control" />
+            </div>
+            <div class="col-lg-auto d-flex gap-2">
+                <button type="submit" class="btn btn-secondary">@T("common.filter")</button>
+                <a asp-page="/Requests/Approvals" class="btn btn-outline-secondary">@T("common.clear")</a>
+            </div>
         </div>
     </div>
 </form>
@@ -205,136 +102,220 @@ else
         <input type="hidden" asp-for="RequestType" />
         <input type="hidden" asp-for="RequestedBy" />
 
-        <div class="approval-toolbar d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3" aria-label="@T("approvals.bulkActions")">
-            <div class="fw-semibold">@Model.PendingRequests.Count @T("approvals.title").ToLower(CultureInfo.CurrentCulture)</div>
-            <div class="d-flex flex-wrap gap-2">
-                <button type="submit" class="btn btn-primary" asp-page-handler="ApproveSelected">
-                    @T("approvals.approveSelected")
-                </button>
-                <button type="submit"
-                        class="btn btn-outline-danger"
-                        asp-page-handler="RejectSelected"
-                        onclick="return confirm('@rejectSelectedConfirm');">
-                    @T("approvals.rejectSelected")
-                </button>
-            </div>
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <button type="submit" class="btn btn-primary" asp-page-handler="ApproveSelected">
+                @T("approvals.approveSelected")
+            </button>
+            <button type="submit"
+                    class="btn btn-outline-danger"
+                    asp-page-handler="RejectSelected"
+                    onclick="return confirm('@rejectSelectedConfirm');">
+                @T("approvals.rejectSelected")
+            </button>
         </div>
 
-        <div class="d-grid gap-3">
+        <div class="vstack gap-3">
             @foreach (var request in Model.PendingRequests)
             {
                 var rejectOneConfirm = F("approvals.confirmRejectOne", request.RequestId);
-                var dateCulture = CultureInfo.CurrentCulture;
-                <article class="approval-card @(request.IsDue ? "due" : "future")">
-                    <div class="approval-card-header">
-                        <div class="pt-1">
-                            <input class="form-check-input"
-                                   type="checkbox"
-                                   name="SelectedRequestIds"
-                                   value="@request.RequestId"
-                                   aria-label="@T("common.select") @request.RequestId" />
-                        </div>
+                var requestType = request.DisplayRequestType;
+                var secondaryAddress = !string.IsNullOrWhiteSpace(request.NewUserPrincipalName)
+                    ? request.NewUserPrincipalName
+                    : request.Mail;
 
-                        <div class="min-w-0">
-                            <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
-                                <a class="h5 mb-0" href="@request.EditUrl">@request.DisplayText</a>
-                                <span class="badge text-bg-secondary">@request.DisplayRequestType</span>
-                                <span class="badge @(request.IsDue ? "text-bg-success" : "text-bg-warning")">
-                                    @(request.IsDue ? T("approvals.dueNow") : T("approvals.future"))
-                                </span>
+                <article class="card approval-card @(request.IsDue ? "" : "approval-card-future")">
+                    <div class="card-body p-3 p-lg-4">
+                        <div class="d-flex flex-column flex-xl-row gap-3 justify-content-between">
+                            <div class="d-flex align-items-start gap-3 min-w-0">
+                                <input class="form-check-input mt-1 flex-shrink-0"
+                                       type="checkbox"
+                                       name="SelectedRequestIds"
+                                       value="@request.RequestId"
+                                       aria-label="@T("common.select")" />
+
+                                <div class="min-w-0">
+                                    <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                                        <a class="h5 mb-0 text-decoration-none text-break"
+                                           href="@request.EditUrl">
+                                            @request.DisplayText
+                                        </a>
+                                        <span class="badge text-bg-secondary">@requestType</span>
+                                        @if (!request.IsDue)
+                                        {
+                                            <span class="badge text-bg-warning">@T("approvals.futureRequest")</span>
+                                        }
+                                    </div>
+
+                                    <div class="text-body-secondary small d-flex flex-wrap gap-x-3 gap-y-1">
+                                        <a href="@request.EditUrl" class="text-decoration-none">
+                                            @F("approvals.requestNumber", request.RequestId)
+                                        </a>
+                                        @if (!string.IsNullOrWhiteSpace(secondaryAddress))
+                                        {
+                                            <span class="text-break">@secondaryAddress</span>
+                                        }
+                                    </div>
+                                </div>
                             </div>
-                            <div class="text-body-secondary small">
-                                <a href="@request.EditUrl">#@request.RequestId</a>
-                                <span aria-hidden="true"> · </span>
-                                @request.RequestType
-                                @if (!string.IsNullOrWhiteSpace(request.NewUserPrincipalName))
-                                {
-                                    <span aria-hidden="true"> · </span><span>@request.NewUserPrincipalName</span>
-                                }
-                                else if (!string.IsNullOrWhiteSpace(request.Mail))
-                                {
-                                    <span aria-hidden="true"> · </span><span>@request.Mail</span>
-                                }
+
+                            <div class="d-flex flex-wrap gap-2 align-self-start flex-shrink-0">
+                                <a class="btn btn-sm btn-outline-primary"
+                                   href="@request.EditUrl">
+                                    @T("approvals.openRequest")
+                                </a>
+                                <button type="submit"
+                                        class="btn btn-sm btn-success"
+                                        asp-page-handler="Approve"
+                                        asp-route-requestId="@request.RequestId">
+                                    @T("approvals.approve")
+                                </button>
+                                <button type="submit"
+                                        class="btn btn-sm btn-outline-danger"
+                                        asp-page-handler="Reject"
+                                        asp-route-requestId="@request.RequestId"
+                                        onclick="return confirm('@rejectOneConfirm');">
+                                    @T("approvals.reject")
+                                </button>
                             </div>
                         </div>
 
-                        <div class="approval-actions" role="group" aria-label="@approvalActionsText">
-                            <a class="btn btn-sm btn-outline-primary" href="@request.EditUrl">@T("approvals.openRequest")</a>
-                            <button type="submit"
-                                    class="btn btn-sm btn-success"
-                                    asp-page-handler="Approve"
-                                    asp-route-requestId="@request.RequestId">
-                                @T("approvals.approve")
-                            </button>
-                            <button type="submit"
-                                    class="btn btn-sm btn-outline-danger"
-                                    asp-page-handler="Reject"
-                                    asp-route-requestId="@request.RequestId"
-                                    onclick="return confirm('@rejectOneConfirm');">
-                                @T("approvals.reject")
-                            </button>
-                        </div>
-                    </div>
+                        <hr class="my-3" />
 
-                    <div class="approval-card-body">
-                        <div>
-                            <span class="approval-field-label">@T("field.executeAfter")</span>
-                            <div class="approval-field-value">
-                                @(request.ExecuteAfter?.ToString("g", dateCulture) ?? T("common.now"))
+                        <div class="row g-3 approval-meta">
+                            <div class="col-sm-6 col-lg-3">
+                                <div class="approval-label">@T("field.executeAfter")</div>
+                                <div>@(request.ExecuteAfter?.ToString("dd.MM.yyyy HH:mm") ?? T("common.now"))</div>
                                 @if (!request.IsDue)
                                 {
                                     <div class="small text-body-secondary mt-1">@T("approvals.waitUntilTime")</div>
                                 }
                             </div>
-                        </div>
 
-                        <div>
-                            <span class="approval-field-label">@T("approvals.requestedBy")</span>
-                            <div class="approval-field-value">@request.RequestedBy</div>
-                        </div>
+                            <div class="col-sm-6 col-lg-3">
+                                <div class="approval-label">@T("approvals.requestedBy")</div>
+                                <div class="text-break">@request.RequestedBy</div>
+                            </div>
 
-                        <div>
-                            <span class="approval-field-label">@T("approvals.created")</span>
-                            <div class="approval-field-value">@(request.CreatedAt?.ToString("g", dateCulture) ?? "—")</div>
-                        </div>
+                            <div class="col-sm-6 col-lg-2">
+                                <div class="approval-label">@T("approvals.created")</div>
+                                <div>@request.CreatedAt?.ToString("dd.MM.yyyy HH:mm")</div>
+                            </div>
 
-                        <div>
-                            <span class="approval-field-label">@T("approvals.details")</span>
-                            <div class="approval-detail-list approval-field-value">
-                                @if (!string.IsNullOrWhiteSpace(request.Title))
-                                {
-                                    <div><strong>@T("common.title"):</strong> @request.Title</div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(request.Department))
-                                {
-                                    <div><strong>@T("common.department"):</strong> @request.Department</div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(request.Company))
-                                {
-                                    <div><strong>@T("common.company"):</strong> @request.Company</div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(request.Office))
-                                {
-                                    <div><strong>@T("common.office"):</strong> @request.Office</div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(request.EmployeeType))
-                                {
-                                    <div><strong>@T("field.employeeType"):</strong> @request.EmployeeType</div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(request.ComputerType))
-                                {
-                                    <div><strong>@T("common.computer"):</strong> @request.ComputerType</div>
-                                }
-                                <div><strong>@T("field.accessCardRequired"):</strong> @(request.AccessCard ? T("common.yes") : T("common.no"))</div>
-                                @if (!string.IsNullOrWhiteSpace(request.OfficeLicense))
-                                {
-                                    <div><strong>@T("field.officeLicense"):</strong> @request.OfficeLicense</div>
-                                }
+                            <div class="col-lg-4">
+                                <div class="approval-label">@T("approvals.details")</div>
+                                <dl class="approval-details mb-0">
+                                    @if (!string.IsNullOrWhiteSpace(request.Title))
+                                    {
+                                        <div><dt>@T("common.title")</dt><dd>@request.Title</dd></div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(request.Department))
+                                    {
+                                        <div><dt>@T("common.department")</dt><dd>@request.Department</dd></div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(request.Company))
+                                    {
+                                        <div><dt>@T("common.company")</dt><dd>@request.Company</dd></div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(request.Office))
+                                    {
+                                        <div><dt>@T("common.office")</dt><dd>@request.Office</dd></div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(request.EmployeeType))
+                                    {
+                                        <div><dt>@T("field.employeeType")</dt><dd>@request.EmployeeType</dd></div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(request.ComputerType))
+                                    {
+                                        <div><dt>@T("common.computer")</dt><dd>@request.ComputerType</dd></div>
+                                    }
+                                    <div>
+                                        <dt>@T("field.accessCardRequired")</dt>
+                                        <dd>@(request.AccessCard ? T("common.yes") : T("common.no"))</dd>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(request.OfficeLicense))
+                                    {
+                                        <div><dt>@T("field.officeLicense")</dt><dd>@request.OfficeLicense</dd></div>
+                                    }
+                                </dl>
                             </div>
                         </div>
                     </div>
                 </article>
             }
         </div>
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <button type="submit" class="btn btn-primary" asp-page-handler="ApproveSelected">
+                @T("approvals.approveSelected")
+            </button>
+            <button type="submit"
+                    class="btn btn-outline-danger"
+                    asp-page-handler="RejectSelected"
+                    onclick="return confirm('@rejectSelectedConfirm');">
+                @T("approvals.rejectSelected")
+            </button>
+        </div>
     </form>
 }
+
+<style>
+    .approval-card {
+        border-inline-start: .35rem solid var(--bs-success);
+    }
+
+    .approval-card-future {
+        border-inline-start-color: var(--bs-warning);
+    }
+
+    .approval-label {
+        color: var(--bs-secondary-color);
+        font-size: .75rem;
+        font-weight: 700;
+        letter-spacing: .035em;
+        margin-bottom: .25rem;
+        text-transform: uppercase;
+    }
+
+    .approval-details {
+        display: grid;
+        gap: .35rem;
+    }
+
+    .approval-details > div {
+        display: grid;
+        grid-template-columns: minmax(8rem, .8fr) minmax(0, 1.2fr);
+        gap: .5rem;
+    }
+
+    .approval-details dt {
+        font-weight: 600;
+    }
+
+    .approval-details dd {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .min-w-0 {
+        min-width: 0;
+    }
+
+    .gap-x-3 {
+        column-gap: 1rem;
+    }
+
+    .gap-y-1 {
+        row-gap: .25rem;
+    }
+
+    @@media (max-width: 575.98px) {
+        .approval-details > div {
+            display: block;
+        }
+
+        .approval-details dd {
+            margin-top: .1rem;
+        }
+    }
+</style>

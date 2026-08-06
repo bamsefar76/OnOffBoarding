@@ -1,16 +1,14 @@
-@page
+﻿@page
 @model UserChangeQueueWeb.Pages.TemporaryAccess.IndexModel
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
 @{
-    ViewData["Title"] = "Temporary access";
-
     var fallbacks = new Dictionary<string, string>
     {
         ["ta.title"] = "Temporary access",
         ["ta.intro"] = "Request temporary access to an approved resource.",
         ["ta.current"] = "Current access",
-        ["ta.requestAccess"] = "Request access",
+        ["ta.requestAccess"] = "Request temporary access",
         ["ta.resource"] = "Resource",
         ["ta.choose"] = "Choose a resource",
         ["ta.duration"] = "Duration",
@@ -27,23 +25,24 @@
         ["ta.pendingRemove"] = "Waiting to be removed",
         ["ta.processingRemove"] = "Removing",
         ["ta.noneCurrent"] = "You do not currently have temporary access.",
-        ["ta.noneAvailable"] = "No additional temporary access resources are available."
+        ["ta.noneAvailable"] = "No additional temporary access resources are available.",
+        ["common.status"] = "Status",
+        ["common.actions"] = "Actions"
     };
 
     var text = await UiTextService.GetTextsAsync(HttpContext, fallbacks);
+    ViewData["Title"] = text.T("ta.title", fallbacks["ta.title"]);
+
     string T(string key) => text.T(key, fallbacks[key]);
 
-    var currentGroups = Model.Groups
-        .Where(g => g.MembershipId.HasValue)
-        .ToList();
-
-    var availableGroups = Model.Groups
-        .Where(g => !g.MembershipId.HasValue)
-        .ToList();
+    var currentGroups = Model.Groups.Where(g => g.MembershipId.HasValue).ToList();
+    var availableGroups = Model.Groups.Where(g => !g.MembershipId.HasValue).ToList();
 }
 
-<h1>@T("ta.title")</h1>
-<p class="text-muted">@T("ta.intro")</p>
+<div class="mb-4">
+    <h1 class="h2 mb-1">@T("ta.title")</h1>
+    <p class="text-body-secondary mb-0">@T("ta.intro")</p>
+</div>
 
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
 {
@@ -56,11 +55,11 @@
 }
 
 <section class="mb-5">
-    <h2 class="h4">@T("ta.current")</h2>
+    <h2 class="h4 mb-3">@T("ta.current")</h2>
 
     @if (currentGroups.Count == 0)
     {
-        <div class="alert alert-secondary">@T("ta.noneCurrent")</div>
+        <div class="alert alert-secondary mb-0">@T("ta.noneCurrent")</div>
     }
     else
     {
@@ -68,10 +67,10 @@
             <table class="table align-middle">
                 <thead>
                     <tr>
-                        <th>Resource</th>
-                        <th>Status</th>
+                        <th>@T("ta.resource")</th>
+                        <th>@T("common.status")</th>
                         <th>@T("ta.expires")</th>
-                        <th class="text-end">Actions</th>
+                        <th class="text-end">@T("common.actions")</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -92,7 +91,7 @@
                             <div class="fw-semibold">@group.DisplayName</div>
                             @if (!string.IsNullOrWhiteSpace(group.Description))
                             {
-                                <div class="small text-muted">@group.Description</div>
+                                <div class="small text-body-secondary">@group.Description</div>
                             }
                             @if (!string.IsNullOrWhiteSpace(group.LastError))
                             {
@@ -117,7 +116,6 @@
                                         </button>
                                     </form>
                                 }
-
                                 @if (group.Status is "PendingAdd" or "Active")
                                 {
                                     <form method="post" asp-page-handler="Remove">
@@ -138,7 +136,7 @@
 </section>
 
 <section>
-    <h2 class="h4">@T("ta.requestAccess")</h2>
+    <h2 class="h4 mb-3">@T("ta.requestAccess")</h2>
 
     @if (availableGroups.Count == 0)
     {
@@ -147,10 +145,13 @@
     else
     {
         <form method="post" asp-page-handler="Request" class="card">
-            <div class="card-body">
+            <div class="card-body p-3 p-md-4">
                 <div class="mb-3">
                     <label asp-for="GroupId" class="form-label">@T("ta.resource")</label>
-                    <select asp-for="GroupId" class="form-select" id="temporaryAccessGroup" required>
+                    <select asp-for="GroupId"
+                            class="form-select"
+                            id="temporaryAccessGroup"
+                            required>
                         <option value="">@T("ta.choose")</option>
                         @foreach (var group in availableGroups)
                         {
@@ -178,9 +179,7 @@
                     </div>
                 </div>
 
-                <button class="btn btn-primary" type="submit">
-                    @T("ta.request")
-                </button>
+                <button class="btn btn-primary" type="submit">@T("ta.request")</button>
             </div>
         </form>
     }
