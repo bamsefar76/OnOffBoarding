@@ -52,17 +52,6 @@
     ViewData["Title"] = T("supervisor.title");
 }
 
-<div style="padding:10px; margin-bottom:20px; background:#f3f3f3; border:1px solid #ccc;">
-    @T("supervisor.loggedInAs"): <strong>@Model.LoginName</strong><br />
-    @T("supervisor.supervisorSam"): <strong>@Model.SamAccountName</strong>
-</div>
-
-<div style="margin-top:10px; margin-bottom:20px;">
-    <a href="/Requests/NewUser">@T("supervisor.newUserRequest")</a>
-    |
-    <a href="/logout" style="color:red; font-weight:bold;">@T("supervisor.signOut")</a>
-</div>
-
 <h2>@T("supervisor.title")</h2>
 
 @if (!string.IsNullOrWhiteSpace(Model.Message))

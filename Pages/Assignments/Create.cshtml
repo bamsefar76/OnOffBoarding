@@ -5,18 +5,53 @@
 @{
     ViewData["Title"] = "Add assignment";
 
-    // Only the fields added on top of the pre-existing Add Assignment page are wired to
-    // translations here -- the rest of this page's text was already hardcoded before these
-    // changes and is out of scope for this pass.
     var textFallbacks = new Dictionary<string, string>
     {
-        ["field.computerType"] = "Computer type",
-        ["field.accessCardRequired"] = "Access card required",
+        ["assignments.title"] = "Add assignment",
+        ["assignments.intro"] = "Select the label and project, find an existing person or register a new person, then add the assignment period.",
+        ["assignments.labelAndProject"] = "Label and project",
+        ["assignments.label"] = "Label",
+        ["assignments.project"] = "Project",
+        ["assignments.selectLabel"] = "Select label",
+        ["assignments.selectLabelFirst"] = "Select label first",
+        ["assignments.noProjectSelected"] = "No project selected",
+        ["assignments.person"] = "Person",
+        ["assignments.usingExistingPerson"] = "Using existing person",
+        ["assignments.chooseAnother"] = "Choose another",
+        ["assignments.possibleExistingPeople"] = "Possible existing people",
+        ["assignments.thisIsNewPerson"] = "This is a new person",
+        ["assignments.assignmentDetails"] = "Assignment details",
+        ["assignments.startDate"] = "Start date",
+        ["assignments.endDate"] = "End date",
+        ["assignments.overlapNotice"] = "Overlapping assignments are allowed. If this period overlaps an existing assignment, it will be flagged for IT review.",
+        ["assignments.submit"] = "Submit assignment",
+        ["assignments.loadingProjects"] = "Loading projects...",
+        ["assignments.unableToLoadProjects"] = "Unable to load projects",
+        ["assignments.loadingManagers"] = "Loading managers...",
+        ["assignments.unableToLoadManagers"] = "Unable to load managers",
+        ["assignments.matchSameEmail"] = "same private email",
+        ["assignments.matchSamePhone"] = "same mobile number",
+        ["assignments.matchSameName"] = "matching name",
         ["assignments.accessCardGroups"] = "Access-card groups",
         ["assignments.accessCardGroupsHelp"] = "Select access at one or more physical sites. Restricted groups are only shown to authorized users.",
         ["assignments.primaryOffice"] = "primary office",
         ["assignments.noAccessCardGroups"] = "No access-card groups are available to you.",
         ["assignments.officeLicenseHelp"] = "Office license is set automatically from the selected title.",
+        ["field.givenName"] = "Given name",
+        ["field.surname"] = "Surname",
+        ["field.privateEmail"] = "Private email",
+        ["field.mobilePhone"] = "Mobile phone",
+        ["field.manager"] = "Manager",
+        ["field.office"] = "Office",
+        ["field.employeeType"] = "Employee type",
+        ["field.title"] = "Title",
+        ["field.computerType"] = "Computer type",
+        ["field.accessCardRequired"] = "Access card required",
+        ["select.project"] = "Select project",
+        ["select.manager"] = "Select manager",
+        ["select.employeeType"] = "Select employee type",
+        ["select.title"] = "Select title",
+        ["select.computerType"] = "Select computer type",
         ["usercreate.automaticGroups"] = "Automatic groups",
         ["usercreate.noAutomaticGroupsMatched"] = "No automatic group rules matched yet.",
         ["common.group"] = "Group",
@@ -31,8 +66,8 @@
     string T(string key) => uiText.T(key, textFallbacks[key]);
 }
 
-<h1>Add assignment</h1>
-<p class="text-muted">Select the label and project, find an existing person or register a new person, then add the assignment period.</p>
+<h1>@T("assignments.title")</h1>
+<p class="text-muted">@T("assignments.intro")</p>
 
 @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
 {
@@ -44,13 +79,13 @@
     <input asp-for="SelectedArchiveRequestId" type="hidden" />
 
     <div class="card mb-4">
-        <div class="card-header"><strong>Label and project</strong></div>
+        <div class="card-header"><strong>@T("assignments.labelAndProject")</strong></div>
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-6">
-                    <label asp-for="SelectedDomain" class="form-label">Label</label>
+                    <label asp-for="SelectedDomain" class="form-label">@T("assignments.label")</label>
                     <select asp-for="SelectedDomain" class="form-select" required>
-                        <option value="">-- Select label --</option>
+                        <option value="">-- @T("assignments.selectLabel") --</option>
                         @foreach (var domain in Model.Domains)
                         {
                             <option value="@domain.Domain"
@@ -69,17 +104,17 @@
                 </div>
 
                 <div class="col-md-6">
-                    <label asp-for="ProjectId" class="form-label">Project</label>
+                    <label asp-for="ProjectId" class="form-label">@T("assignments.project")</label>
                     <select asp-for="ProjectId"
                             class="form-select"
                             disabled="@(string.IsNullOrWhiteSpace(Model.SelectedDomain))">
                         @if (string.IsNullOrWhiteSpace(Model.SelectedDomain))
                         {
-                            <option value="">-- Select label first --</option>
+                            <option value="">-- @T("assignments.selectLabelFirst") --</option>
                         }
                         else
                         {
-                            <option value="">-- No project selected --</option>
+                            <option value="">-- @T("assignments.noProjectSelected") --</option>
                             @foreach (var project in Model.Projects)
                             {
                                 <option value="@project.Id">@project.ProjectNumber — @project.ProjectName</option>
@@ -93,26 +128,26 @@
     </div>
 
     <div class="card mb-4">
-        <div class="card-header"><strong>Person</strong></div>
+        <div class="card-header"><strong>@T("assignments.person")</strong></div>
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-3">
-                    <label asp-for="GivenName" class="form-label">Given name</label>
+                    <label asp-for="GivenName" class="form-label">@T("field.givenName")</label>
                     <input asp-for="GivenName" class="form-control person-search" autocomplete="off" />
                     <span asp-validation-for="GivenName" class="text-danger"></span>
                 </div>
                 <div class="col-md-3">
-                    <label asp-for="Surname" class="form-label">Surname</label>
+                    <label asp-for="Surname" class="form-label">@T("field.surname")</label>
                     <input asp-for="Surname" class="form-control person-search" autocomplete="off" />
                     <span asp-validation-for="Surname" class="text-danger"></span>
                 </div>
                 <div class="col-md-3">
-                    <label asp-for="PrivateEmail" class="form-label">Private email</label>
+                    <label asp-for="PrivateEmail" class="form-label">@T("field.privateEmail")</label>
                     <input asp-for="PrivateEmail" class="form-control person-search" autocomplete="off" />
                     <span asp-validation-for="PrivateEmail" class="text-danger"></span>
                 </div>
                 <div class="col-md-3">
-                    <label asp-for="MobilePhone" class="form-label">Mobile phone</label>
+                    <label asp-for="MobilePhone" class="form-label">@T("field.mobilePhone")</label>
                     <input asp-for="MobilePhone" class="form-control person-search" autocomplete="off" />
                 </div>
             </div>
@@ -120,32 +155,32 @@
             <div id="personSelection" class="alert alert-success mt-3 d-none">
                 <div class="d-flex justify-content-between align-items-center">
                     <span id="selectedPersonText"></span>
-                    <button type="button" id="clearPerson" class="btn btn-sm btn-outline-secondary">Choose another</button>
+                    <button type="button" id="clearPerson" class="btn btn-sm btn-outline-secondary">@T("assignments.chooseAnother")</button>
                 </div>
             </div>
 
             <div id="matchPanel" class="mt-3 d-none">
-                <h2 class="h6">Possible existing people</h2>
+                <h2 class="h6">@T("assignments.possibleExistingPeople")</h2>
                 <div id="matchList" class="list-group"></div>
-                <button type="button" id="newPersonButton" class="btn btn-outline-primary mt-2">This is a new person</button>
+                <button type="button" id="newPersonButton" class="btn btn-outline-primary mt-2">@T("assignments.thisIsNewPerson")</button>
             </div>
         </div>
     </div>
 
     <div class="card mb-4">
-        <div class="card-header"><strong>Assignment details</strong></div>
+        <div class="card-header"><strong>@T("assignments.assignmentDetails")</strong></div>
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-4">
-                    <label asp-for="ManagerSamAccountName" class="form-label">Manager</label>
+                    <label asp-for="ManagerSamAccountName" class="form-label">@T("field.manager")</label>
                     <select asp-for="ManagerSamAccountName" class="form-select" disabled="@(string.IsNullOrWhiteSpace(Model.SelectedDomain))">
                         @if (string.IsNullOrWhiteSpace(Model.SelectedDomain))
                         {
-                            <option value="">-- Select label first --</option>
+                            <option value="">-- @T("assignments.selectLabelFirst") --</option>
                         }
                         else
                         {
-                            <option value="">-- Select manager --</option>
+                            <option value="">-- @T("select.manager") --</option>
                             @foreach (var manager in Model.Managers)
                             {
                                 <option value="@manager.SamAccountName">@manager.DisplayName</option>
@@ -155,13 +190,13 @@
                     <span asp-validation-for="ManagerSamAccountName" class="text-danger"></span>
                 </div>
                 <div class="col-md-4">
-                    <label asp-for="Office" class="form-label">Office</label>
+                    <label asp-for="Office" class="form-label">@T("field.office")</label>
                     <input asp-for="Office" class="form-control" />
                 </div>
                 <div class="col-md-4">
-                    <label asp-for="EmployeeType" class="form-label">Employee type</label>
+                    <label asp-for="EmployeeType" class="form-label">@T("field.employeeType")</label>
                     <select asp-for="EmployeeType" class="form-select">
-                        <option value="">-- Select employee type --</option>
+                        <option value="">-- @T("select.employeeType") --</option>
                         @foreach (var employeeType in Model.EmployeeTypes)
                         {
                             <option value="@employeeType.Name"
@@ -172,9 +207,9 @@
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label asp-for="Title" class="form-label">Title</label>
+                    <label asp-for="Title" class="form-label">@T("field.title")</label>
                     <select asp-for="Title" class="form-select" id="titleSelect">
-                        <option value="">-- Select title --</option>
+                        <option value="">-- @T("select.title") --</option>
                         @foreach (var title in Model.Titles)
                         {
                             <option value="@title"
@@ -194,7 +229,7 @@
                 <input asp-for="Country" type="hidden" id="Country" />
                 <input asp-for="OfficeLicense" type="hidden" id="OfficeLicense" />
                 <div class="col-md-3">
-                    <label asp-for="StartDateText" class="form-label">Start date</label>
+                    <label asp-for="StartDateText" class="form-label">@T("assignments.startDate")</label>
                     <input asp-for="StartDateText"
                            class="form-control"
                            type="text"
@@ -204,7 +239,7 @@
                     <span asp-validation-for="StartDateText" class="text-danger"></span>
                 </div>
                 <div class="col-md-3" id="endDateContainer">
-                    <label asp-for="EndDateText" class="form-label">End date</label>
+                    <label asp-for="EndDateText" class="form-label">@T("assignments.endDate")</label>
                     <input asp-for="EndDateText"
                            class="form-control"
                            type="text"
@@ -216,7 +251,7 @@
                 <div class="col-md-4">
                     <label asp-for="ComputerType" class="form-label">@T("field.computerType")</label>
                     <select asp-for="ComputerType" class="form-select" id="computerTypeSelect">
-                        <option value="" data-domain="">-- Select computer type --</option>
+                        <option value="" data-domain="">-- @T("select.computerType") --</option>
                         @foreach (var computerType in Model.ComputerTypes)
                         {
                             <option value="@computerType.ComputerType" data-domain="@computerType.Domain">
@@ -317,10 +352,10 @@
     </div>
 
     <div class="alert alert-info">
-        Overlapping assignments are allowed. If this period overlaps an existing assignment, it will be flagged for IT review.
+        @T("assignments.overlapNotice")
     </div>
 
-    <button type="submit" class="btn btn-primary">Submit assignment</button>
+    <button type="submit" class="btn btn-primary">@T("assignments.submit")</button>
 </form>
 
 @section Scripts {
@@ -375,7 +410,7 @@
                 document.getElementById('PrivateEmail').value = item.privateEmail ?? '';
                 document.getElementById('MobilePhone').value = item.mobilePhone ?? '';
 
-                selectionText.textContent = `Using existing person: ${item.displayName}`;
+                selectionText.textContent = `@T("assignments.usingExistingPerson"): ${item.displayName}`;
                 selection.classList.remove('d-none');
                 matchPanel.classList.add('d-none');
             }
@@ -406,9 +441,9 @@
 
                 for (const item of items) {
                     const reasons = [];
-                    if (item.emailMatch) reasons.push('same private email');
-                    if (item.phoneMatch) reasons.push('same mobile number');
-                    if (item.exactNameMatch) reasons.push('matching name');
+                    if (item.emailMatch) reasons.push('@T("assignments.matchSameEmail")');
+                    if (item.phoneMatch) reasons.push('@T("assignments.matchSamePhone")');
+                    if (item.exactNameMatch) reasons.push('@T("assignments.matchSameName")');
 
                     const contact = [];
                     if (item.privateEmail) contact.push(item.privateEmail);
@@ -443,13 +478,13 @@
 
                 if (!domain) {
                     projectSelect.disabled = true;
-                    projectSelect.add(new Option('-- Select label first --', ''));
+                    projectSelect.add(new Option('-- @T("assignments.selectLabelFirst") --', ''));
                     departmentSelect.value = '';
                     return;
                 }
 
                 projectSelect.disabled = true;
-                projectSelect.add(new Option('Loading projects...', ''));
+                projectSelect.add(new Option('@T("assignments.loadingProjects")', ''));
 
                 const params = new URLSearchParams({
                     handler: 'Projects',
@@ -461,10 +496,10 @@
                 });
 
                 projectSelect.innerHTML = '';
-                projectSelect.add(new Option('-- No project selected --', ''));
+                projectSelect.add(new Option('-- @T("assignments.noProjectSelected") --', ''));
 
                 if (!response.ok) {
-                    projectSelect.add(new Option('Unable to load projects', ''));
+                    projectSelect.add(new Option('@T("assignments.unableToLoadProjects")', ''));
                     return;
                 }
 
@@ -493,12 +528,12 @@
 
                 if (!domain) {
                     managerSelect.disabled = true;
-                    managerSelect.add(new Option('-- Select label first --', ''));
+                    managerSelect.add(new Option('-- @T("assignments.selectLabelFirst") --', ''));
                     return;
                 }
 
                 managerSelect.disabled = true;
-                managerSelect.add(new Option('Loading managers...', ''));
+                managerSelect.add(new Option('@T("assignments.loadingManagers")', ''));
 
                 const params = new URLSearchParams({
                     handler: 'Managers',
@@ -510,10 +545,10 @@
                 });
 
                 managerSelect.innerHTML = '';
-                managerSelect.add(new Option('-- Select manager --', ''));
+                managerSelect.add(new Option('-- @T("select.manager") --', ''));
 
                 if (!response.ok) {
-                    managerSelect.add(new Option('Unable to load managers', ''));
+                    managerSelect.add(new Option('@T("assignments.unableToLoadManagers")', ''));
                     return;
                 }
 
