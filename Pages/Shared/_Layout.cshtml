@@ -39,6 +39,8 @@
         ["nav.temporaryAccess"] = "Temporary access",
         ["nav.requestLicenses"] = "Request licenses",
         ["nav.myLicenseRequests"] = "My license requests",
+        ["nav.licenseReview"] = "License review",
+        ["nav.licenseProducts"] = "License products",
         ["nav.temporaryAccessGroups"] = "Temporary access groups",
         ["nav.privacy"] = "Privacy",
         ["nav.logout"] = "Sign out",
@@ -78,6 +80,7 @@
     var canOpenProjects = canOpenProjectList || canOpenProjectImport;
     var canOpenTemporaryAccess = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/TemporaryAccess");
     var canOpenLicenseRequests = isAuthenticated;
+    var canOpenLicenseReview = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/LicenseRequests/ITReview");
     var canOpenSelfService = canOpenTemporaryAccess || canOpenLicenseRequests;
 
     var canOpenGroupRules = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/GroupRules");
@@ -90,7 +93,7 @@
 
     var canOpenRequests = canOpenUserChangeQueue || canOpenUpdateUser || canOpenAddAssignment || canOpenSupervisor || canOpenApprovals || canOpenUpcomingChanges;
     var canOpenReports = canOpenSnapshot;
-    var canOpenSettings = canOpenGroupRules || canOpenTranslations || canOpenDomains || canOpenEmailTemplates || canOpenPageAccessRules || canOpenAccessCardGroups || canOpenTemporaryAccessGroups;
+    var canOpenSettings = canOpenGroupRules || canOpenTranslations || canOpenDomains || canOpenEmailTemplates || canOpenPageAccessRules || canOpenAccessCardGroups || canOpenTemporaryAccessGroups || canOpenLicenseProducts;
 
     string ActiveClass(string pagePath)
     {
@@ -180,7 +183,7 @@
                         @if (canOpenRequests)
                         {
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle text-dark@(DropdownActiveClass("/Requests/NewUser", "/Requests/UpdateUser", "/Assignments/Create", "/Assignments/Submitted", "/Requests/Supervisor", "/Requests/Approvals", "/Requests/Upcoming", "/Requests/UserPendingChanges"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <a class="nav-link dropdown-toggle text-dark@(DropdownActiveClass("/Requests/NewUser", "/Requests/UpdateUser", "/Assignments/Create", "/Assignments/Submitted", "/Requests/Supervisor", "/Requests/Approvals", "/Requests/Upcoming", "/Requests/UserPendingChanges", "/LicenseRequests/ITReview"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                     @T("nav.requests")
                                 </a>
                                 <ul class="dropdown-menu">
@@ -199,6 +202,10 @@
                                     @if (canOpenApprovals)
                                     {
                                         <li><a class="dropdown-item@(ActiveClass("/Requests/Approvals"))" asp-area="" asp-page="/Requests/Approvals">@T("nav.approvals")</a></li>
+                                    }
+                                    @if (canOpenLicenseReview)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/LicenseRequests/ITReview"))" asp-area="" asp-page="/LicenseRequests/ITReview">@T("nav.licenseReview")</a></li>
                                     }
                                     @if (canOpenUpcomingChanges)
                                     {
@@ -318,6 +325,10 @@
                                     @if (canOpenTemporaryAccessGroups)
                                     {
                                         <li><a class="dropdown-item@(ActiveClass("/Settings/TemporaryAccessGroups"))" asp-area="" asp-page="/Settings/TemporaryAccessGroups">@T("nav.temporaryAccessGroups")</a></li>
+                                    }
+                                    @if (canOpenLicenseProducts)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Settings/LicenseProducts"))" asp-area="" asp-page="/Settings/LicenseProducts">@T("nav.licenseProducts")</a></li>
                                     }
                                     @if (canOpenTranslations)
                                     {

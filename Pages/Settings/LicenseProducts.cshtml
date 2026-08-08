@@ -1,0 +1,160 @@
+@page
+@model UserChangeQueueWeb.Pages.Settings.LicenseProductsModel
+@{
+    ViewData["Title"] = "License products";
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <h1 class="h2 mb-1">License products</h1>
+        <p class="text-body-secondary mb-0">
+            Maintain the licenses users can request. Products with the same product family are mutually exclusive.
+        </p>
+    </div>
+    <a asp-page="/Settings/LicenseProducts"
+       asp-page-handler="New"
+       class="btn btn-primary">New license</a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-success">@Model.StatusMessage</div>
+}
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<div class="row g-4">
+    <div class="col-xl-7">
+        <form method="get" class="card mb-3">
+            <div class="card-body">
+                <div class="row g-3 align-items-end">
+                    <div class="col-md">
+                        <label asp-for="Search" class="form-label">Search</label>
+                        <input asp-for="Search" class="form-control" placeholder="Name, description or product family" />
+                    </div>
+                    <div class="col-md-auto">
+                        <div class="form-check mb-2">
+                            <input asp-for="ShowInactive" class="form-check-input" />
+                            <label asp-for="ShowInactive" class="form-check-label">Show inactive</label>
+                        </div>
+                    </div>
+                    <div class="col-md-auto d-flex gap-2">
+                        <button class="btn btn-secondary" type="submit">Filter</button>
+                        <a asp-page="/Settings/LicenseProducts" class="btn btn-outline-secondary">Clear</a>
+                    </div>
+                </div>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Product family</th>
+                        <th>Level</th>
+                        <th>Active</th>
+                        <th>Order</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var product in Model.Products)
+                {
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">@product.Name</div>
+                            @if (!string.IsNullOrWhiteSpace(product.Description))
+                            {
+                                <div class="small text-body-secondary">@product.Description</div>
+                            }
+                        </td>
+                        <td>@product.ProductFamily</td>
+                        <td>@product.LicenseLevel</td>
+                        <td>@(product.Active ? "Yes" : "No")</td>
+                        <td>@product.SortOrder</td>
+                        <td class="text-end">
+                            <a asp-page="/Settings/LicenseProducts"
+                               asp-route-id="@product.LicenseProductId"
+                               asp-route-Search="@Model.Search"
+                               asp-route-ShowInactive="@Model.ShowInactive"
+                               class="btn btn-sm btn-outline-primary">Edit</a>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="col-xl-5">
+        <div class="card position-sticky" style="top:1rem;">
+            <div class="card-header">
+                @(Model.Edit.LicenseProductId > 0 ? "Edit license" : "New license")
+            </div>
+            <div class="card-body">
+                <form method="post" asp-page-handler="Save">
+                    <input type="hidden" asp-for="Edit.LicenseProductId" />
+                    <input type="hidden" asp-for="Search" />
+                    <input type="hidden" asp-for="ShowInactive" />
+
+                    <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+                    <div class="mb-3">
+                        <label asp-for="Edit.Name" class="form-label">Name</label>
+                        <input asp-for="Edit.Name" class="form-control" />
+                        <span asp-validation-for="Edit.Name" class="text-danger"></span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Edit.Description" class="form-label">Description</label>
+                        <textarea asp-for="Edit.Description" class="form-control" rows="4"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label asp-for="Edit.ProductFamily" class="form-label">Product family</label>
+                        <input asp-for="Edit.ProductFamily" class="form-control" />
+                        <div class="form-text">
+                            Licenses with the same non-empty product family cannot be requested together.
+                        </div>
+                    </div>
+
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <label asp-for="Edit.LicenseLevel" class="form-label">License level</label>
+                            <input asp-for="Edit.LicenseLevel" class="form-control" type="number" />
+                        </div>
+                        <div class="col-sm-6">
+                            <label asp-for="Edit.SortOrder" class="form-label">Sort order</label>
+                            <input asp-for="Edit.SortOrder" class="form-control" type="number" />
+                        </div>
+                    </div>
+
+                    <div class="form-check my-3">
+                        <input asp-for="Edit.Active" class="form-check-input" />
+                        <label asp-for="Edit.Active" class="form-check-label">Available for request</label>
+                    </div>
+
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-primary" type="submit">Save</button>
+                        <a asp-page="/Settings/LicenseProducts" asp-page-handler="New" class="btn btn-outline-secondary">New</a>
+                    </div>
+                </form>
+
+                @if (Model.Edit.LicenseProductId > 0)
+                {
+                    <hr />
+                    <form method="post" asp-page-handler="SetActive">
+                        <input type="hidden" name="id" value="@Model.Edit.LicenseProductId" />
+                        <input type="hidden" name="active" value="@(!Model.Edit.Active)" />
+                        <button class="btn btn-sm @(Model.Edit.Active ? "btn-outline-danger" : "btn-outline-success")" type="submit">
+                            @(Model.Edit.Active ? "Disable" : "Activate")
+                        </button>
+                    </form>
+                }
+            </div>
+        </div>
+    </div>
+</div>
