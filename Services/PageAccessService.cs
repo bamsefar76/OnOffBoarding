@@ -36,6 +36,13 @@ public class PageAccessService
 
         foreach (var groupName in allowedGroups)
         {
+            if (groupName.Equals(
+                    "*AUTHENTICATED*",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
             if (IsUserInAdGroup(samAccountName, groupName))
             {
                 return true;
@@ -59,15 +66,7 @@ public class PageAccessService
             || normalizedPagePath.Equals("/Error", StringComparison.OrdinalIgnoreCase)
             || normalizedPagePath.Equals("/TemporaryAccess", StringComparison.OrdinalIgnoreCase)
             || normalizedPagePath.Equals("/TemporaryAccess/Index", StringComparison.OrdinalIgnoreCase)
-
-            // License self-service is available to every authenticated user.
-            || normalizedPagePath.Equals("/LicenseRequests", StringComparison.OrdinalIgnoreCase)
-            || normalizedPagePath.Equals("/LicenseRequests/Index", StringComparison.OrdinalIgnoreCase)
-
-            // The manager-review page must pass the global page filter.
-            // ManagerReviewModel performs the object-level authorization and
-            // only permits the manager stored on that application.
-            || normalizedPagePath.Equals("/LicenseRequests/ManagerReview", StringComparison.OrdinalIgnoreCase);
+;
     }
 
     private static IReadOnlyList<string> GetRuleLookupPaths(string pagePath)

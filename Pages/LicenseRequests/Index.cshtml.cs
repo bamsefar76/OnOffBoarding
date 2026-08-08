@@ -222,13 +222,10 @@ VALUES
                     HttpContext.RequestAborted);
             }
 
-            var reviewUrl = Url.Page(
-                "/LicenseRequests/ManagerReview",
-                pageHandler: null,
-                values: new { id = applicationId },
-                protocol: Request.Scheme)
-                ?? throw new InvalidOperationException(
-                    "Could not create review URL.");
+            var reviewUrl = await BuildPublicReviewUrlAsync(
+                connection,
+                transaction,
+                applicationId);
 
             var licenseHtml = string.Join(
                 "<br />",
@@ -277,11 +274,11 @@ VALUES
             StatusMessage =
                 $"Application {applicationId} was sent to your manager.";
 
- return RedirectToPage(
-    "/LicenseRequests/Index",
-    pageHandler: null,
-    routeValues: null,
-    fragment: "my-license-applications");
+            return RedirectToPage(
+                "/LicenseRequests/Index",
+                pageHandler: null,
+                routeValues: null,
+                fragment: "my-license-applications");
         }
         catch (Exception ex)
         {
@@ -295,6 +292,48 @@ VALUES
 
             return Page();
         }
+    }
+
+    private async Task<string> BuildPublicReviewUrlAsync(
+        SqlConnection connection,
+        SqlTransaction transaction,
+        long applicationId)
+    {
+        await using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = @"
+SELECT TOP (1) SettingValue
+FROM dbo.ApplicationSettings
+WHERE SettingKey = N'PublicBaseUrl'
+  AND Active = 1;";
+
+        var value = await command.ExecuteScalarAsync(
+            HttpContext.RequestAborted);
+
+        var publicBaseUrl =
+            value is null || value is DBNull
+                ? null
+                : Convert.ToString(value)?.Trim();
+
+        if (string.IsNullOrWhiteSpace(publicBaseUrl))
+        {
+            throw new InvalidOperationException(
+                "Application setting 'PublicBaseUrl' is missing or inactive.");
+        }
+
+        if (!Uri.TryCreate(
+                publicBaseUrl.TrimEnd('/') + "/",
+                UriKind.Absolute,
+                out var baseUri))
+        {
+            throw new InvalidOperationException(
+                "Application setting 'PublicBaseUrl' is not a valid absolute URL.");
+        }
+
+        return new Uri(
+            baseUri,
+            $"LicenseRequests/ManagerReview?id={applicationId}")
+            .ToString();
     }
 
     private async Task<UserInfo?> LoadCurrentUserAsync(
