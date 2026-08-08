@@ -1,58 +1,51 @@
 ﻿@page
 @model UserChangeQueueWeb.Pages.LicenseRequests.IndexModel
-@{ ViewData["Title"] = "License applications"; }
-
-                                       name="applicationId"
-                                       value="@application.Id" />
-                                <button class="btn btn-primary">
-                                    Mark approved licenses completed
-                                </button>
-                            </form>
-                        }
-                    </div>
-                </article>
-            }
-        </div>
-    }
+@{
+    ViewData["Title"] = "License applications";
 }
-else
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <h1 class="h2 mb-1">License applications</h1>
+        <p class="text-body-secondary mb-0">
+            Request one or more licenses and follow the approval process.
+        </p>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
 {
-    <div id="new-license-request" class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-        <div>
-            <h1 class="h2 mb-1">License applications</h1>
-            <p class="text-body-secondary mb-0">
-                Request one or more licenses and follow the approval process.
-            </p>
+    <div class="alert alert-success">@Model.StatusMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+{
+    <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+
+<div asp-validation-summary="All"
+     class="text-danger mb-3"></div>
+
+@if (Model.CurrentUser is not null)
+{
+    <div class="card mb-4">
+        <div class="card-body">
+            <strong>Requested for:</strong>
+            @Model.CurrentUser.DisplayName
+            <br />
+            <strong>Manager:</strong>
+            @Model.CurrentUser.ManagerName
         </div>
     </div>
+}
 
-    @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
-    {
-        <div class="alert alert-success">@Model.StatusMessage</div>
-    }
+<section id="new-license-request"
+         class="scroll-margin-top">
+    <h2 class="h4 mb-3">Request licenses</h2>
 
-    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
-    {
-        <div class="alert alert-danger">@Model.ErrorMessage</div>
-    }
+    <form method="post"
+          asp-page-handler="Submit">
 
-    <div asp-validation-summary="All" class="text-danger mb-3"></div>
-
-    @if (Model.CurrentUser is not null)
-    {
-        <div class="card mb-4">
-            <div class="card-body">
-                <strong>Requested for:</strong>
-                @Model.CurrentUser.DisplayName
-                <br />
-                <strong>Manager:</strong>
-                @Model.CurrentUser.ManagerName
-            </div>
-        </div>
-    }
-
-    <section id="new-license-request" class="scroll-margin-top">
-    <form method="post" asp-page-handler="Submit">
         <div class="row g-3 mb-4">
             @foreach (var license in Model.Licenses)
             {
@@ -76,17 +69,22 @@ else
                                 </label>
                             </div>
 
-                            <div class="small text-body-secondary mt-2">
-                                @license.Description
-                            </div>
+                            @if (!string.IsNullOrWhiteSpace(license.Description))
+                            {
+                                <div class="small text-body-secondary mt-2">
+                                    @license.Description
+                                </div>
+                            }
 
                             @if (!string.IsNullOrWhiteSpace(license.ProductFamily))
                             {
-                                <div class="small mt-2">
-                                    Family: @license.ProductFamily
+                                <div class="small text-body-secondary mt-2">
+                                    @license.ProductFamily
                                     @if (license.LicenseLevel.HasValue)
                                     {
-                                        <span> · Level @license.LicenseLevel</span>
+                                        <span>
+                                            · Level @license.LicenseLevel
+                                        </span>
                                     }
                                 </div>
                             }
@@ -96,28 +94,38 @@ else
             }
         </div>
 
+        <span asp-validation-for="SelectedLicenseIds"
+              class="text-danger"></span>
+
         <div class="mb-3">
-            <label asp-for="BusinessReason" class="form-label">
+            <label asp-for="BusinessReason"
+                   class="form-label">
                 Business reason
             </label>
+
             <textarea asp-for="BusinessReason"
                       class="form-control"
                       rows="5"
+                      maxlength="2000"
                       required></textarea>
+
             <span asp-validation-for="BusinessReason"
                   class="text-danger"></span>
         </div>
 
-        <button class="btn btn-primary" type="submit">
+        <button class="btn btn-primary"
+                type="submit">
             Submit to manager
         </button>
     </form>
-    </section>
+</section>
 
-    <hr class="my-5" />
+<hr class="my-5" />
 
-    <section id="my-license-applications" class="scroll-margin-top">
-    <h2 id="my-license-applications" class="h4">My applications</h2>
+<section id="my-license-applications"
+         class="scroll-margin-top">
+
+    <h2 class="h4">My license requests</h2>
 
     @if (Model.MyApplications.Count == 0)
     {
@@ -132,36 +140,52 @@ else
             {
                 <article class="card">
                     <div class="card-body">
-                        <div class="d-flex justify-content-between gap-2">
+
+                        <div class="d-flex flex-wrap justify-content-between gap-2">
                             <h3 class="h5">
                                 Application #@application.Id
                             </h3>
+
                             <span class="badge text-bg-secondary">
                                 @application.Status
                             </span>
-
+                        </div>
 
                         <dl class="row mb-0">
                             <dt class="col-sm-3">Licenses</dt>
                             <dd class="col-sm-9">
-                                @string.Join(", ", application.Items.Select(x => x.Name))
+                                @string.Join(
+                                    ", ",
+                                    application.Items.Select(x => x.Name))
                             </dd>
 
                             <dt class="col-sm-3">Submitted</dt>
                             <dd class="col-sm-9">
-                                @application.SubmittedAt.ToString("dd.MM.yyyy HH:mm")
+                                @application.SubmittedAt.ToString(
+                                    "dd.MM.yyyy HH:mm")
                             </dd>
 
                             <dt class="col-sm-3">Business reason</dt>
-                            <dd class="col-sm-9">@application.BusinessReason</dd>
+                            <dd class="col-sm-9">
+                                @application.BusinessReason
+                            </dd>
 
-                            @if (!string.IsNullOrWhiteSpace(application.ManagerDecision))
+                            @if (!string.IsNullOrWhiteSpace(
+                                    application.ManagerDecision))
                             {
-                                <dt class="col-sm-3">Manager decision</dt>
-                                <dd class="col-sm-9">@application.ManagerDecision</dd>
+                                <dt class="col-sm-3">
+                                    Manager decision
+                                </dt>
+                                <dd class="col-sm-9">
+                                    @application.ManagerDecision
+                                </dd>
 
-                                <dt class="col-sm-3">Manager reason</dt>
-                                <dd class="col-sm-9">@application.ManagerReason</dd>
+                                <dt class="col-sm-3">
+                                    Manager reason
+                                </dt>
+                                <dd class="col-sm-9">
+                                    @application.ManagerReason
+                                </dd>
                             }
                         </dl>
                     </div>
@@ -169,38 +193,52 @@ else
             }
         </div>
     }
-    </section>
-}
+</section>
 
 <style>
-    .scroll-margin-top { scroll-margin-top: 5rem; }
+    .scroll-margin-top {
+        scroll-margin-top: 5rem;
+    }
 </style>
 
 @section Scripts {
 <script>
 (() => {
-    const boxes = [...document.querySelectorAll(".license-box")];
+    const boxes =
+        [...document.querySelectorAll(".license-box")];
 
     function refresh() {
-        const selectedFamilies = new Set(
-            boxes
-                .filter(x => x.checked && x.dataset.family)
-                .map(x => x.dataset.family)
-        );
+        const selectedFamilies =
+            new Set(
+                boxes
+                    .filter(
+                        x => x.checked
+                             && x.dataset.family)
+                    .map(
+                        x => x.dataset.family)
+            );
 
         for (const box of boxes) {
             const disabled =
-                box.dataset.family &&
-                selectedFamilies.has(box.dataset.family) &&
-                !box.checked;
+                box.dataset.family
+                && selectedFamilies.has(
+                    box.dataset.family)
+                && !box.checked;
 
             box.disabled = disabled;
+
             box.closest(".license-card")
-                ?.classList.toggle("opacity-50", disabled);
+                ?.classList.toggle(
+                    "opacity-50",
+                    disabled);
         }
     }
 
-    boxes.forEach(x => x.addEventListener("change", refresh));
+    boxes.forEach(
+        x => x.addEventListener(
+            "change",
+            refresh));
+
     refresh();
 })();
 </script>

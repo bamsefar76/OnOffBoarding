@@ -13,7 +13,9 @@ public sealed class IndexModel : PageModel
     private readonly SqlConnectionFactory _connections;
     private readonly LicenseEmailService _emails;
 
-    public IndexModel(SqlConnectionFactory connections, LicenseEmailService emails)
+    public IndexModel(
+        SqlConnectionFactory connections,
+        LicenseEmailService emails)
     {
         _connections = connections;
         _emails = emails;
@@ -33,20 +35,20 @@ public sealed class IndexModel : PageModel
     public List<LicenseOption> Licenses { get; } = new();
     public List<ApplicationDetails> MyApplications { get; } = new();
 
-    public async Task<IActionResult> OnGetAsync()
+    public async Task OnGetAsync()
     {
-        await using var connection = await _connections.OpenAsync(HttpContext.RequestAborted);
+        await using var connection =
+            await _connections.OpenAsync(HttpContext.RequestAborted);
+
         CurrentUser = await LoadCurrentUserAsync(connection);
         await LoadLicensesAsync(connection);
         await LoadMyApplicationsAsync(connection);
-        return Page();
-    }
-
     }
 
     public async Task<IActionResult> OnPostSubmitAsync()
     {
         BusinessReason = BusinessReason?.Trim() ?? "";
+
         SelectedLicenseIds = SelectedLicenseIds
             .Where(x => x > 0)
             .Distinct()
@@ -56,33 +58,59 @@ public sealed class IndexModel : PageModel
             await _connections.OpenAsync(HttpContext.RequestAborted);
 
         CurrentUser = await LoadCurrentUserAsync(connection);
+
         var selected = await LoadSelectedLicensesAsync(
-            connection, SelectedLicenseIds);
+            connection,
+            SelectedLicenseIds);
 
         if (CurrentUser is null)
-            ModelState.AddModelError("", "Your user record could not be found.");
+        {
+            ModelState.AddModelError(
+                "",
+                "Your user record could not be found.");
+        }
         else if (string.IsNullOrWhiteSpace(CurrentUser.ManagerSam)
                  || string.IsNullOrWhiteSpace(CurrentUser.ManagerEmail))
-            ModelState.AddModelError("", "Your manager or manager email address is missing.");
+        {
+            ModelState.AddModelError(
+                "",
+                "Your manager or manager email address is missing.");
+        }
 
         if (selected.Count == 0)
-            ModelState.AddModelError(nameof(SelectedLicenseIds), "Select at least one license.");
+        {
+            ModelState.AddModelError(
+                nameof(SelectedLicenseIds),
+                "Select at least one license.");
+        }
 
         if (selected.Count != SelectedLicenseIds.Count)
-            ModelState.AddModelError(nameof(SelectedLicenseIds), "One or more selected licenses are unavailable.");
+        {
+            ModelState.AddModelError(
+                nameof(SelectedLicenseIds),
+                "One or more selected licenses are unavailable.");
+        }
 
         var duplicateFamily = selected
             .Where(x => !string.IsNullOrWhiteSpace(x.ProductFamily))
-            .GroupBy(x => x.ProductFamily, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(
+                x => x.ProductFamily,
+                StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(x => x.Count() > 1);
 
         if (duplicateFamily is not null)
+        {
             ModelState.AddModelError(
                 nameof(SelectedLicenseIds),
                 $"Select only one license from product family '{duplicateFamily.Key}'.");
+        }
 
         if (string.IsNullOrWhiteSpace(BusinessReason))
-            ModelState.AddModelError(nameof(BusinessReason), "Business reason is required.");
+        {
+            ModelState.AddModelError(
+                nameof(BusinessReason),
+                "Business reason is required.");
+        }
 
         if (!ModelState.IsValid || CurrentUser is null)
         {
@@ -128,20 +156,46 @@ VALUES
     N'AwaitingManager',
     SYSDATETIME()
 );";
-                command.Parameters.AddRequiredNVarChar("@UserSam", CurrentUser.Sam, 256);
-                command.Parameters.AddNVarChar("@UserName", CurrentUser.DisplayName, 300);
-                command.Parameters.AddNVarChar("@UserEmail", CurrentUser.Email, 320);
-                command.Parameters.AddRequiredNVarChar("@ManagerSam", CurrentUser.ManagerSam, 256);
-                command.Parameters.AddNVarChar("@ManagerName", CurrentUser.ManagerName, 300);
-                command.Parameters.AddRequiredNVarChar("@ManagerEmail", CurrentUser.ManagerEmail, 320);
-                command.Parameters.AddRequiredNVarChar("@Reason", BusinessReason, 2000);
+
+                command.Parameters.AddRequiredNVarChar(
+                    "@UserSam",
+                    CurrentUser.Sam,
+                    256);
+                command.Parameters.AddNVarChar(
+                    "@UserName",
+                    CurrentUser.DisplayName,
+                    300);
+                command.Parameters.AddNVarChar(
+                    "@UserEmail",
+                    CurrentUser.Email,
+                    320);
+                command.Parameters.AddRequiredNVarChar(
+                    "@ManagerSam",
+                    CurrentUser.ManagerSam,
+                    256);
+                command.Parameters.AddNVarChar(
+                    "@ManagerName",
+                    CurrentUser.ManagerName,
+                    300);
+                command.Parameters.AddRequiredNVarChar(
+                    "@ManagerEmail",
+                    CurrentUser.ManagerEmail,
+                    320);
+                command.Parameters.AddRequiredNVarChar(
+                    "@Reason",
+                    BusinessReason,
+                    2000);
+
                 applicationId = Convert.ToInt64(
-                    await command.ExecuteScalarAsync(HttpContext.RequestAborted));
+                    await command.ExecuteScalarAsync(
+                        HttpContext.RequestAborted));
             }
 
             foreach (var license in selected)
             {
-                await using var itemCommand = connection.CreateCommand();
+                await using var itemCommand =
+                    connection.CreateCommand();
+
                 itemCommand.Transaction = transaction;
                 itemCommand.CommandText = @"
 INSERT INTO dbo.LicenseApplicationItems
@@ -156,9 +210,16 @@ VALUES
     @ProductId,
     N'Pending'
 );";
-                itemCommand.Parameters.AddBigInt("@ApplicationId", applicationId);
-                itemCommand.Parameters.AddInt("@ProductId", license.Id);
-                await itemCommand.ExecuteNonQueryAsync(HttpContext.RequestAborted);
+
+                itemCommand.Parameters.AddBigInt(
+                    "@ApplicationId",
+                    applicationId);
+                itemCommand.Parameters.AddInt(
+                    "@ProductId",
+                    license.Id);
+
+                await itemCommand.ExecuteNonQueryAsync(
+                    HttpContext.RequestAborted);
             }
 
             var reviewUrl = Url.Page(
@@ -166,26 +227,39 @@ VALUES
                 pageHandler: null,
                 values: new { id = applicationId },
                 protocol: Request.Scheme)
-                ?? throw new InvalidOperationException("Could not create review URL.");
+                ?? throw new InvalidOperationException(
+                    "Could not create review URL.");
 
             var licenseHtml = string.Join(
                 "<br />",
-                selected.Select(x =>
-                    "&#8226; " + System.Net.WebUtility.HtmlEncode(x.Name)));
+                selected.Select(
+                    x => "&#8226; "
+                         + System.Net.WebUtility.HtmlEncode(x.Name)));
 
             var subject =
                 $"License request from {CurrentUser.DisplayName}";
 
             var body =
-                "<p>Hello " + System.Net.WebUtility.HtmlEncode(CurrentUser.ManagerName) + ",</p>" +
-                "<p>" + System.Net.WebUtility.HtmlEncode(CurrentUser.DisplayName) +
-                " requested the following licenses:</p><p>" +
-                licenseHtml + "</p><p><strong>Business reason</strong><br />" +
-                System.Net.WebUtility.HtmlEncode(BusinessReason) +
-                "</p><p><a href=\"" +
-                System.Net.WebUtility.HtmlEncode(reviewUrl) +
-                "\">Review and decide</a></p><p>Application #" +
-                applicationId + "</p>";
+                "<p>Hello "
+                + System.Net.WebUtility.HtmlEncode(
+                    CurrentUser.ManagerName)
+                + ",</p>"
+                + "<p>"
+                + System.Net.WebUtility.HtmlEncode(
+                    CurrentUser.DisplayName)
+                + " requested the following licenses:</p>"
+                + "<p>"
+                + licenseHtml
+                + "</p>"
+                + "<p><strong>Business reason</strong><br />"
+                + System.Net.WebUtility.HtmlEncode(BusinessReason)
+                + "</p>"
+                + "<p><a href=\""
+                + System.Net.WebUtility.HtmlEncode(reviewUrl)
+                + "\">Review and decide</a></p>"
+                + "<p>Application #"
+                + applicationId
+                + "</p>";
 
             await _emails.QueueAsync(
                 connection,
@@ -197,76 +271,51 @@ VALUES
                 body,
                 HttpContext.RequestAborted);
 
-            await transaction.CommitAsync(HttpContext.RequestAborted);
+            await transaction.CommitAsync(
+                HttpContext.RequestAborted);
 
             StatusMessage =
                 $"Application {applicationId} was sent to your manager.";
 
-            return RedirectToPage();
+            return RedirectToPage(
+                "/LicenseRequests/Index",
+                fragment: "my-license-applications");
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync(HttpContext.RequestAborted);
+            await transaction.RollbackAsync(
+                HttpContext.RequestAborted);
+
             ErrorMessage = ex.Message;
+
             await LoadLicensesAsync(connection);
             await LoadMyApplicationsAsync(connection);
+
             return Page();
         }
     }
 
-        WHEN SUM(CASE WHEN Status = N'Pending' THEN 1 ELSE 0 END) > 0
-            THEN N'AwaitingIT'
-        WHEN SUM(CASE WHEN Status = N'Approved' THEN 1 ELSE 0 END) > 0
-         AND SUM(CASE WHEN Status = N'Rejected' THEN 1 ELSE 0 END) > 0
-            THEN N'PartiallyApproved'
-        WHEN SUM(CASE WHEN Status = N'Approved' THEN 1 ELSE 0 END) > 0
-            THEN N'Approved'
-        ELSE N'ITRejected'
-    END
-    FROM dbo.LicenseApplicationItems
-    WHERE LicenseApplicationId = @ApplicationId
-)
-WHERE LicenseApplicationId = @ApplicationId;";
-            command.Parameters.AddRequiredNVarChar("@Decision", decision, 30);
-            command.Parameters.AddNVarChar("@Reason", reason, 2000);
-            command.Parameters.AddRequiredNVarChar(
-                "@ChangedBy",
-                User.Identity?.Name ?? Environment.UserName,
-                300);
-            command.Parameters.AddBigInt("@ItemId", itemId);
-            command.Parameters.AddBigInt("@ApplicationId", applicationId);
-
-            await command.ExecuteNonQueryAsync(HttpContext.RequestAborted);
-            await transaction.CommitAsync(HttpContext.RequestAborted);
-
-            StatusMessage =
-                $"License item {itemId} was {decision.ToLowerInvariant()}.";
-
-            return RedirectToPage(new { it = true });
-        }
-        catch
-        {
-            await transaction.RollbackAsync(HttpContext.RequestAborted);
-            throw;
-        }
-    }
-
-    private async Task<bool> IsItAsync() =>
-        (await _accessScope.GetCurrentAsync(
-            User, HttpContext.RequestAborted)).IsIT;
-
-    private async Task<UserInfo?> LoadCurrentUserAsync(SqlConnection connection)
+    private async Task<UserInfo?> LoadCurrentUserAsync(
+        SqlConnection connection)
     {
-        var sam = AccessScopeService.ExtractSamAccountName(User.Identity?.Name);
+        var sam =
+            AccessScopeService.ExtractSamAccountName(
+                User.Identity?.Name);
 
-        await using var command = connection.CreateCommand();
+        await using var command =
+            connection.CreateCommand();
+
         command.CommandText = @"
 SELECT TOP (1)
     ad.SamAccountName,
     COALESCE(NULLIF(ad.DisplayName, N''), ad.SamAccountName),
     ISNULL(ad.Mail, N''),
     ISNULL(ad.ManagerSamAccountName, N''),
-    COALESCE(NULLIF(manager.DisplayName, N''), ad.ManagerSamAccountName, N''),
+    COALESCE(
+        NULLIF(manager.DisplayName, N''),
+        ad.ManagerSamAccountName,
+        N''
+    ),
     ISNULL(manager.Mail, N'')
 FROM dbo.ADObjects AS ad
 LEFT JOIN dbo.ADObjects AS manager
@@ -274,13 +323,21 @@ LEFT JOIN dbo.ADObjects AS manager
    AND ISNULL(manager.IsDeleted, 0) = 0
 WHERE ad.SamAccountName = @Sam
   AND ISNULL(ad.IsDeleted, 0) = 0;";
-        command.Parameters.AddRequiredNVarChar("@Sam", sam, 256);
+
+        command.Parameters.AddRequiredNVarChar(
+            "@Sam",
+            sam,
+            256);
 
         await using var reader =
-            await command.ExecuteReaderAsync(HttpContext.RequestAborted);
+            await command.ExecuteReaderAsync(
+                HttpContext.RequestAborted);
 
-        if (!await reader.ReadAsync(HttpContext.RequestAborted))
+        if (!await reader.ReadAsync(
+                HttpContext.RequestAborted))
+        {
             return null;
+        }
 
         return new UserInfo
         {
@@ -293,11 +350,14 @@ WHERE ad.SamAccountName = @Sam
         };
     }
 
-    private async Task LoadLicensesAsync(SqlConnection connection)
+    private async Task LoadLicensesAsync(
+        SqlConnection connection)
     {
         Licenses.Clear();
 
-        await using var command = connection.CreateCommand();
+        await using var command =
+            connection.CreateCommand();
+
         command.CommandText = @"
 SELECT
     LicenseProductId,
@@ -307,30 +367,46 @@ SELECT
     LicenseLevel
 FROM dbo.LicenseProducts
 WHERE Active = 1
-ORDER BY SortOrder, COALESCE(ProductFamily, Name), LicenseLevel, Name;";
+ORDER BY
+    SortOrder,
+    COALESCE(ProductFamily, Name),
+    LicenseLevel,
+    Name;";
 
         await using var reader =
-            await command.ExecuteReaderAsync(HttpContext.RequestAborted);
+            await command.ExecuteReaderAsync(
+                HttpContext.RequestAborted);
 
-        while (await reader.ReadAsync(HttpContext.RequestAborted))
+        while (await reader.ReadAsync(
+                   HttpContext.RequestAborted))
+        {
             Licenses.Add(ReadLicense(reader));
+        }
     }
 
-    private async Task<List<LicenseOption>> LoadSelectedLicensesAsync(
-        SqlConnection connection,
-        IReadOnlyList<int> ids)
+    private async Task<List<LicenseOption>>
+        LoadSelectedLicensesAsync(
+            SqlConnection connection,
+            IReadOnlyList<int> ids)
     {
         if (ids.Count == 0)
-            return new();
+        {
+            return new List<LicenseOption>();
+        }
 
-        await using var command = connection.CreateCommand();
-        var parameterNames = new List<string>();
+        await using var command =
+            connection.CreateCommand();
+
+        var parameterNames =
+            new List<string>();
 
         for (var i = 0; i < ids.Count; i++)
         {
             var name = "@Id" + i;
             parameterNames.Add(name);
-            command.Parameters.AddInt(name, ids[i]);
+            command.Parameters.AddInt(
+                name,
+                ids[i]);
         }
 
         command.CommandText = $@"
@@ -342,57 +418,85 @@ SELECT
     LicenseLevel
 FROM dbo.LicenseProducts
 WHERE Active = 1
-  AND LicenseProductId IN ({string.Join(",", parameterNames)});";
+  AND LicenseProductId IN
+      ({string.Join(",", parameterNames)});";
 
-        var result = new List<LicenseOption>();
+        var result =
+            new List<LicenseOption>();
+
         await using var reader =
-            await command.ExecuteReaderAsync(HttpContext.RequestAborted);
+            await command.ExecuteReaderAsync(
+                HttpContext.RequestAborted);
 
-        while (await reader.ReadAsync(HttpContext.RequestAborted))
+        while (await reader.ReadAsync(
+                   HttpContext.RequestAborted))
+        {
             result.Add(ReadLicense(reader));
+        }
 
         return result;
     }
 
-    private async Task LoadMyApplicationsAsync(SqlConnection connection)
+    private async Task LoadMyApplicationsAsync(
+        SqlConnection connection)
     {
         MyApplications.Clear();
-        var sam = AccessScopeService.ExtractSamAccountName(User.Identity?.Name);
 
-        await using var command = connection.CreateCommand();
+        var sam =
+            AccessScopeService.ExtractSamAccountName(
+                User.Identity?.Name);
+
+        await using var command =
+            connection.CreateCommand();
+
         command.CommandText = @"
 SELECT
     application.LicenseApplicationId
 FROM dbo.LicenseApplications AS application
 WHERE application.RequestedForSamAccountName = @Sam
 ORDER BY application.LicenseApplicationId DESC;";
-        command.Parameters.AddRequiredNVarChar("@Sam", sam, 256);
 
-        var ids = new List<long>();
+        command.Parameters.AddRequiredNVarChar(
+            "@Sam",
+            sam,
+            256);
+
+        var ids =
+            new List<long>();
+
         await using (var reader =
-            await command.ExecuteReaderAsync(HttpContext.RequestAborted))
+            await command.ExecuteReaderAsync(
+                HttpContext.RequestAborted))
         {
-            while (await reader.ReadAsync(HttpContext.RequestAborted))
+            while (await reader.ReadAsync(
+                       HttpContext.RequestAborted))
+            {
                 ids.Add(reader.GetInt64(0));
+            }
         }
 
         foreach (var id in ids)
         {
-            var application = await LoadApplicationAsync(
-                connection, null, id);
+            var application =
+                await LoadApplicationAsync(
+                    connection,
+                    id);
 
             if (application is not null)
+            {
                 MyApplications.Add(application);
+            }
         }
     }
 
-    private async Task<ApplicationDetails?> LoadApplicationAsync(
-        SqlConnection connection,
-        SqlTransaction? transaction,
-        long id)
+    private async Task<ApplicationDetails?>
+        LoadApplicationAsync(
+            SqlConnection connection,
+            long id)
     {
-        await using var command = connection.CreateCommand();
-        command.Transaction = transaction;
+        await using var command =
+            connection.CreateCommand();
+
         command.CommandText = @"
 SELECT
     application.LicenseApplicationId,
@@ -411,19 +515,26 @@ SELECT
     item.ItReason
 FROM dbo.LicenseApplications AS application
 INNER JOIN dbo.LicenseApplicationItems AS item
-    ON item.LicenseApplicationId = application.LicenseApplicationId
+    ON item.LicenseApplicationId =
+       application.LicenseApplicationId
 INNER JOIN dbo.LicenseProducts AS product
-    ON product.LicenseProductId = item.LicenseProductId
+    ON product.LicenseProductId =
+       item.LicenseProductId
 WHERE application.LicenseApplicationId = @Id
 ORDER BY product.Name;";
-        command.Parameters.AddBigInt("@Id", id);
+
+        command.Parameters.AddBigInt(
+            "@Id",
+            id);
 
         ApplicationDetails? result = null;
 
         await using var reader =
-            await command.ExecuteReaderAsync(HttpContext.RequestAborted);
+            await command.ExecuteReaderAsync(
+                HttpContext.RequestAborted);
 
-        while (await reader.ReadAsync(HttpContext.RequestAborted))
+        while (await reader.ReadAsync(
+                   HttpContext.RequestAborted))
         {
             result ??= new ApplicationDetails
             {
@@ -439,31 +550,41 @@ ORDER BY product.Name;";
                 SubmittedAt = reader.GetDateTime(9)
             };
 
-            result.Items.Add(new ItemDetails
-            {
-                Id = reader.GetInt64(10),
-                Name = Get(reader, 11),
-                Status = Get(reader, 12),
-                Reason = Get(reader, 13)
-            });
+            result.Items.Add(
+                new ItemDetails
+                {
+                    Id = reader.GetInt64(10),
+                    Name = Get(reader, 11),
+                    Status = Get(reader, 12),
+                    Reason = Get(reader, 13)
+                });
         }
 
         return result;
     }
 
-    private static LicenseOption ReadLicense(SqlDataReader reader) => new()
-    {
-        Id = reader.GetInt32(0),
-        Name = Get(reader, 1),
-        Description = Get(reader, 2),
-        ProductFamily = Get(reader, 3),
-        LicenseLevel = reader.IsDBNull(4) ? null : reader.GetInt32(4)
-    };
+    private static LicenseOption ReadLicense(
+        SqlDataReader reader) =>
+        new()
+        {
+            Id = reader.GetInt32(0),
+            Name = Get(reader, 1),
+            Description = Get(reader, 2),
+            ProductFamily = Get(reader, 3),
+            LicenseLevel =
+                reader.IsDBNull(4)
+                    ? null
+                    : reader.GetInt32(4)
+        };
 
-    private static string Get(SqlDataReader reader, int ordinal) =>
+    private static string Get(
+        SqlDataReader reader,
+        int ordinal) =>
         reader.IsDBNull(ordinal)
             ? ""
-            : Convert.ToString(reader.GetValue(ordinal)) ?? "";
+            : Convert.ToString(
+                  reader.GetValue(ordinal))
+              ?? "";
 
     public sealed class UserInfo
     {
@@ -497,10 +618,6 @@ ORDER BY product.Name;";
         public string ManagerReason { get; init; } = "";
         public DateTime SubmittedAt { get; init; }
         public List<ItemDetails> Items { get; } = new();
-        public string LicenseHtml => string.Join(
-            "<br />",
-            Items.Select(x =>
-                "&#8226; " + System.Net.WebUtility.HtmlEncode(x.Name)));
     }
 
     public sealed class ItemDetails
