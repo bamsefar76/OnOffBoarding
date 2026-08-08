@@ -277,9 +277,11 @@ VALUES
             StatusMessage =
                 $"Application {applicationId} was sent to your manager.";
 
-            return RedirectToPage(
-                "/LicenseRequests/Index",
-                fragment: "my-license-applications");
+ return RedirectToPage(
+    "/LicenseRequests/Index",
+    pageHandler: null,
+    routeValues: null,
+    fragment: "my-license-applications");
         }
         catch (Exception ex)
         {
