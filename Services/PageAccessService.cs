@@ -1,4 +1,4 @@
-using Microsoft.Data.SqlClient;
+﻿using Microsoft.Data.SqlClient;
 using System.DirectoryServices.AccountManagement;
 
 namespace UserChangeQueueWeb.Services;
@@ -58,7 +58,16 @@ public class PageAccessService
             || normalizedPagePath.Equals("/Language", StringComparison.OrdinalIgnoreCase)
             || normalizedPagePath.Equals("/Error", StringComparison.OrdinalIgnoreCase)
             || normalizedPagePath.Equals("/TemporaryAccess", StringComparison.OrdinalIgnoreCase)
-            || normalizedPagePath.Equals("/TemporaryAccess/Index", StringComparison.OrdinalIgnoreCase);
+            || normalizedPagePath.Equals("/TemporaryAccess/Index", StringComparison.OrdinalIgnoreCase)
+
+            // License self-service is available to every authenticated user.
+            || normalizedPagePath.Equals("/LicenseRequests", StringComparison.OrdinalIgnoreCase)
+            || normalizedPagePath.Equals("/LicenseRequests/Index", StringComparison.OrdinalIgnoreCase)
+
+            // The manager-review page must pass the global page filter.
+            // ManagerReviewModel performs the object-level authorization and
+            // only permits the manager stored on that application.
+            || normalizedPagePath.Equals("/LicenseRequests/ManagerReview", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<string> GetRuleLookupPaths(string pagePath)
@@ -100,7 +109,6 @@ public class PageAccessService
         }
 
         await using var cn = await _connectionFactory.OpenAsync();
-
         await using var cmd = cn.CreateCommand();
 
         var parameterNames = new List<string>();
