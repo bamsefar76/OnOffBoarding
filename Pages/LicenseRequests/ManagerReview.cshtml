@@ -1,0 +1,49 @@
+@page
+@model UserChangeQueueWeb.Pages.LicenseRequests.ManagerReviewModel
+@{ ViewData["Title"] = "Review license application"; }
+
+<h1 class="h2 mb-4">Review license application</h1>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-success">@Model.StatusMessage</div>
+}
+
+@if (Model.Application is not null)
+{
+    var application = Model.Application;
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between gap-2">
+                <h2 class="h5">Application #@application.Id</h2>
+                <span class="badge text-bg-secondary">@application.Status</span>
+            </div>
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Requested by</dt><dd class="col-sm-9">@application.UserName</dd>
+                <dt class="col-sm-3">Licenses</dt><dd class="col-sm-9">@Html.Raw(application.LicenseHtml)</dd>
+                <dt class="col-sm-3">Business reason</dt><dd class="col-sm-9">@application.BusinessReason</dd>
+                @if (!string.IsNullOrWhiteSpace(application.ManagerDecision))
+                {
+                    <dt class="col-sm-3">Decision</dt><dd class="col-sm-9">@application.ManagerDecision</dd>
+                    <dt class="col-sm-3">Reason</dt><dd class="col-sm-9">@application.ManagerReason</dd>
+                }
+            </dl>
+        </div>
+    </div>
+
+    @if (application.Status == "AwaitingManager")
+    {
+        <form method="post">
+            <input type="hidden" asp-for="Id" />
+            <div class="mb-3">
+                <label asp-for="DecisionReason" class="form-label">Decision reason</label>
+                <textarea asp-for="DecisionReason" class="form-control" rows="5" required></textarea>
+                <div class="form-text">Required for both approval and rejection.</div>
+                <span asp-validation-for="DecisionReason" class="text-danger"></span>
+            </div>
+            <button class="btn btn-success" asp-page-handler="Approve">Approve and send to IT</button>
+            <button class="btn btn-outline-danger" asp-page-handler="Reject">Reject</button>
+        </form>
+    }
+}

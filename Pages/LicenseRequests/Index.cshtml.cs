@@ -11,24 +11,13 @@ namespace UserChangeQueueWeb.Pages.LicenseRequests;
 public sealed class IndexModel : PageModel
 {
     private readonly SqlConnectionFactory _connections;
-    private readonly AccessScopeService _accessScope;
     private readonly LicenseEmailService _emails;
 
-    public IndexModel(
-        SqlConnectionFactory connections,
-        AccessScopeService accessScope,
-        LicenseEmailService emails)
+    public IndexModel(SqlConnectionFactory connections, LicenseEmailService emails)
     {
         _connections = connections;
-        _accessScope = accessScope;
         _emails = emails;
     }
-
-    [BindProperty(SupportsGet = true)]
-    public long? Review { get; set; }
-
-    [BindProperty(SupportsGet = true)]
-    public bool It { get; set; }
 
     [BindProperty]
     public List<int> SelectedLicenseIds { get; set; } = new();
@@ -36,59 +25,23 @@ public sealed class IndexModel : PageModel
     [BindProperty, Required, StringLength(2000)]
     public string BusinessReason { get; set; } = "";
 
-    [BindProperty, Required, StringLength(2000)]
-    public string DecisionReason { get; set; } = "";
-
     [TempData]
     public string? StatusMessage { get; set; }
 
     public string? ErrorMessage { get; private set; }
     public UserInfo? CurrentUser { get; private set; }
-    public ApplicationDetails? ReviewApplication { get; private set; }
     public List<LicenseOption> Licenses { get; } = new();
     public List<ApplicationDetails> MyApplications { get; } = new();
-    public List<ApplicationDetails> ItApplications { get; } = new();
 
     public async Task<IActionResult> OnGetAsync()
     {
-        await using var connection =
-            await _connections.OpenAsync(HttpContext.RequestAborted);
-
-        if (Review.HasValue)
-        {
-            ReviewApplication = await LoadApplicationAsync(
-                connection, null, Review.Value);
-
-            var currentSam = AccessScopeService.ExtractSamAccountName(
-                User.Identity?.Name);
-
-            if (ReviewApplication is null
-                || !string.Equals(
-                    ReviewApplication.ManagerSam,
-                    currentSam,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return Forbid();
-            }
-
-            return Page();
-        }
-
-        if (It)
-        {
-            if (!await IsItAsync())
-            {
-                return Forbid();
-            }
-
-            await LoadItApplicationsAsync(connection);
-            return Page();
-        }
-
+        await using var connection = await _connections.OpenAsync(HttpContext.RequestAborted);
         CurrentUser = await LoadCurrentUserAsync(connection);
         await LoadLicensesAsync(connection);
         await LoadMyApplicationsAsync(connection);
         return Page();
+    }
+
     }
 
     public async Task<IActionResult> OnPostSubmitAsync()
@@ -209,9 +162,9 @@ VALUES
             }
 
             var reviewUrl = Url.Page(
-                "/LicenseRequests/Index",
+                "/LicenseRequests/ManagerReview",
                 pageHandler: null,
-                values: new { review = applicationId },
+                values: new { id = applicationId },
                 protocol: Request.Scheme)
                 ?? throw new InvalidOperationException("Could not create review URL.");
 
@@ -261,245 +214,6 @@ VALUES
         }
     }
 
-    public Task<IActionResult> OnPostManagerApproveAsync(long id) =>
-        ManagerDecisionAsync(id, "Approved", "AwaitingIT");
-
-    public Task<IActionResult> OnPostManagerRejectAsync(long id) =>
-        ManagerDecisionAsync(id, "Rejected", "ManagerRejected");
-
-    public async Task<IActionResult> OnPostItApproveAsync(long applicationId, long itemId)
-    {
-        return await ItDecisionAsync(applicationId, itemId, "Approved", null);
-    }
-
-    public async Task<IActionResult> OnPostItRejectAsync(long applicationId, long itemId)
-    {
-        DecisionReason = DecisionReason?.Trim() ?? "";
-
-        if (string.IsNullOrWhiteSpace(DecisionReason))
-        {
-            StatusMessage = "A rejection reason is required.";
-            return RedirectToPage(new { it = true });
-        }
-
-        return await ItDecisionAsync(
-            applicationId, itemId, "Rejected", DecisionReason);
-    }
-
-    public async Task<IActionResult> OnPostCompleteAsync(long applicationId)
-    {
-        if (!await IsItAsync())
-            return Forbid();
-
-        await using var connection =
-            await _connections.OpenAsync(HttpContext.RequestAborted);
-
-        await using var transaction =
-            (SqlTransaction)await connection.BeginTransactionAsync(
-                HttpContext.RequestAborted);
-
-        try
-        {
-            var application = await LoadApplicationAsync(
-                connection, transaction, applicationId);
-
-            if (application is null)
-                return NotFound();
-
-            await using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = @"
-UPDATE dbo.LicenseApplicationItems
-SET
-    Status = N'Completed',
-    ItDecisionAt = COALESCE(ItDecisionAt, SYSDATETIME()),
-    ItDecisionBy = COALESCE(ItDecisionBy, @ChangedBy)
-WHERE LicenseApplicationId = @ApplicationId
-  AND Status = N'Approved';
-
-UPDATE dbo.LicenseApplications
-SET
-    Status = N'Completed',
-    CompletedAt = SYSDATETIME()
-WHERE LicenseApplicationId = @ApplicationId
-  AND Status IN (N'Approved', N'PartiallyApproved');";
-            command.Parameters.AddBigInt("@ApplicationId", applicationId);
-            command.Parameters.AddRequiredNVarChar(
-                "@ChangedBy",
-                User.Identity?.Name ?? Environment.UserName,
-                300);
-
-            await command.ExecuteNonQueryAsync(HttpContext.RequestAborted);
-
-            var body =
-                "<p>Hello " +
-                System.Net.WebUtility.HtmlEncode(application.UserName) +
-                ",</p><p>IT marked application #" + applicationId +
-                " as completed.</p><p>" + application.LicenseHtml + "</p>";
-
-            await _emails.QueueAsync(
-                connection,
-                transaction,
-                "LicenseRequestCompleted",
-                application.UserEmail,
-                application.UserName,
-                $"License application {applicationId} completed",
-                body,
-                HttpContext.RequestAborted);
-
-            await transaction.CommitAsync(HttpContext.RequestAborted);
-            StatusMessage = $"Application {applicationId} was completed.";
-            return RedirectToPage(new { it = true });
-        }
-        catch
-        {
-            await transaction.RollbackAsync(HttpContext.RequestAborted);
-            throw;
-        }
-    }
-
-    private async Task<IActionResult> ManagerDecisionAsync(
-        long id,
-        string decision,
-        string newStatus)
-    {
-        DecisionReason = DecisionReason?.Trim() ?? "";
-
-        if (string.IsNullOrWhiteSpace(DecisionReason))
-        {
-            ModelState.AddModelError(
-                nameof(DecisionReason),
-                "A reason is required for both approval and rejection.");
-
-            Review = id;
-            return await OnGetAsync();
-        }
-
-        var currentSam = AccessScopeService.ExtractSamAccountName(
-            User.Identity?.Name);
-
-        await using var connection =
-            await _connections.OpenAsync(HttpContext.RequestAborted);
-
-        await using var transaction =
-            (SqlTransaction)await connection.BeginTransactionAsync(
-                HttpContext.RequestAborted);
-
-        try
-        {
-            var application = await LoadApplicationAsync(
-                connection, transaction, id);
-
-            if (application is null
-                || !string.Equals(
-                    application.ManagerSam,
-                    currentSam,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return Forbid();
-            }
-
-            await using var update = connection.CreateCommand();
-            update.Transaction = transaction;
-            update.CommandText = @"
-UPDATE dbo.LicenseApplications
-SET
-    Status = @Status,
-    ManagerDecision = @Decision,
-    ManagerReason = @Reason,
-    ManagerDecisionAt = SYSDATETIME(),
-    ManagerDecisionBy = @ChangedBy
-WHERE LicenseApplicationId = @Id
-  AND Status = N'AwaitingManager';";
-            update.Parameters.AddRequiredNVarChar("@Status", newStatus, 40);
-            update.Parameters.AddRequiredNVarChar("@Decision", decision, 20);
-            update.Parameters.AddRequiredNVarChar("@Reason", DecisionReason, 2000);
-            update.Parameters.AddRequiredNVarChar(
-                "@ChangedBy",
-                User.Identity?.Name ?? currentSam,
-                300);
-            update.Parameters.AddBigInt("@Id", id);
-
-            if (await update.ExecuteNonQueryAsync(HttpContext.RequestAborted) != 1)
-                throw new InvalidOperationException(
-                    "This application has already been decided.");
-
-            var body =
-                "<p>Hello " +
-                System.Net.WebUtility.HtmlEncode(application.UserName) +
-                ",</p><p>Your manager decision is <strong>" +
-                decision + "</strong>.</p><p>" +
-                application.LicenseHtml +
-                "</p><p><strong>Reason</strong><br />" +
-                System.Net.WebUtility.HtmlEncode(DecisionReason) +
-                "</p>";
-
-            await _emails.QueueAsync(
-                connection,
-                transaction,
-                decision == "Approved"
-                    ? "LicenseRequestManagerApproved"
-                    : "LicenseRequestManagerRejected",
-                application.UserEmail,
-                application.UserName,
-                $"License application {id}: {decision}",
-                body,
-                HttpContext.RequestAborted);
-
-            await transaction.CommitAsync(HttpContext.RequestAborted);
-            StatusMessage = decision == "Approved"
-                ? "Approved and sent to IT."
-                : "Application rejected.";
-
-            return RedirectToPage(new { review = id });
-        }
-        catch
-        {
-            await transaction.RollbackAsync(HttpContext.RequestAborted);
-            throw;
-        }
-    }
-
-    private async Task<IActionResult> ItDecisionAsync(
-        long applicationId,
-        long itemId,
-        string decision,
-        string? reason)
-    {
-        if (!await IsItAsync())
-            return Forbid();
-
-        await using var connection =
-            await _connections.OpenAsync(HttpContext.RequestAborted);
-
-        await using var transaction =
-            (SqlTransaction)await connection.BeginTransactionAsync(
-                HttpContext.RequestAborted);
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = @"
-UPDATE item
-SET
-    Status = @Decision,
-    ItDecision = @Decision,
-    ItReason = @Reason,
-    ItDecisionBy = @ChangedBy,
-    ItDecisionAt = SYSDATETIME()
-FROM dbo.LicenseApplicationItems AS item
-INNER JOIN dbo.LicenseApplications AS application
-    ON application.LicenseApplicationId = item.LicenseApplicationId
-WHERE item.LicenseApplicationItemId = @ItemId
-  AND item.LicenseApplicationId = @ApplicationId
-  AND item.Status = N'Pending'
-  AND application.Status IN (N'AwaitingIT', N'PartiallyApproved');
-
-UPDATE dbo.LicenseApplications
-SET Status =
-(
-    SELECT CASE
         WHEN SUM(CASE WHEN Status = N'Pending' THEN 1 ELSE 0 END) > 0
             THEN N'AwaitingIT'
         WHEN SUM(CASE WHEN Status = N'Approved' THEN 1 ELSE 0 END) > 0
@@ -669,41 +383,6 @@ ORDER BY application.LicenseApplicationId DESC;";
 
             if (application is not null)
                 MyApplications.Add(application);
-        }
-    }
-
-    private async Task LoadItApplicationsAsync(SqlConnection connection)
-    {
-        ItApplications.Clear();
-
-        await using var command = connection.CreateCommand();
-        command.CommandText = @"
-SELECT LicenseApplicationId
-FROM dbo.LicenseApplications
-WHERE Status IN
-(
-    N'AwaitingIT',
-    N'PartiallyApproved',
-    N'Approved',
-    N'ITRejected'
-)
-ORDER BY LicenseApplicationId;";
-
-        var ids = new List<long>();
-        await using (var reader =
-            await command.ExecuteReaderAsync(HttpContext.RequestAborted))
-        {
-            while (await reader.ReadAsync(HttpContext.RequestAborted))
-                ids.Add(reader.GetInt64(0));
-        }
-
-        foreach (var id in ids)
-        {
-            var application = await LoadApplicationAsync(
-                connection, null, id);
-
-            if (application is not null)
-                ItApplications.Add(application);
         }
     }
 

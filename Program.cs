@@ -51,6 +51,9 @@ builder.Services.AddScoped<UiTextService>();
 builder.Services.AddScoped<PersonMatchingService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<PageAccessFilter>();
+builder.Services.AddScoped<PersonMatchingService>();
+builder.Services.AddScoped<LicenseEmailService>();
+
 
 builder.Services.AddRazorPages(options =>
 {

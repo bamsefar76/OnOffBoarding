@@ -1,0 +1,98 @@
+@page
+@model UserChangeQueueWeb.Pages.LicenseRequests.ITReviewModel
+@{ ViewData["Title"] = "License review"; }
+
+<h1 class="h2 mb-1">License review</h1>
+<p class="text-body-secondary mb-4">
+    Review manager-approved applications and record manual IT decisions.
+</p>
+
+@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+{
+    <div class="alert alert-info">@Model.StatusMessage</div>
+}
+
+@if (Model.Applications.Count == 0)
+{
+    <div class="alert alert-success">No applications need IT review.</div>
+}
+else
+{
+    <div class="vstack gap-4">
+        @foreach (var application in Model.Applications)
+        {
+            <article class="card">
+                <div class="card-header d-flex justify-content-between gap-2">
+                    <strong>Application #@application.Id · @application.UserName</strong>
+                    <span class="badge text-bg-secondary">@application.Status</span>
+                </div>
+                <div class="card-body">
+                    <dl class="row">
+                        <dt class="col-sm-3">Requester</dt>
+                        <dd class="col-sm-9">@application.UserName (@application.UserEmail)</dd>
+                        <dt class="col-sm-3">Manager</dt>
+                        <dd class="col-sm-9">@application.ManagerName</dd>
+                        <dt class="col-sm-3">Business reason</dt>
+                        <dd class="col-sm-9">@application.BusinessReason</dd>
+                        <dt class="col-sm-3">Manager reason</dt>
+                        <dd class="col-sm-9">@application.ManagerReason</dd>
+                    </dl>
+
+                    <div class="table-responsive">
+                        <table class="table align-middle">
+                            <thead>
+                                <tr>
+                                    <th>License</th>
+                                    <th>Status</th>
+                                    <th>Reason</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var item in application.Items)
+                                {
+                                    <tr>
+                                        <td>@item.Name</td>
+                                        <td>@item.Status</td>
+                                        <td>@item.Reason</td>
+                                        <td>
+                                            @if (item.Status == "Pending")
+                                            {
+                                                <div class="d-flex flex-wrap gap-2">
+                                                    <form method="post" asp-page-handler="Approve">
+                                                        <input type="hidden" name="applicationId" value="@application.Id" />
+                                                        <input type="hidden" name="itemId" value="@item.Id" />
+                                                        <button class="btn btn-sm btn-success">Approve</button>
+                                                    </form>
+
+                                                    <form method="post" asp-page-handler="Reject" class="d-flex gap-2">
+                                                        <input type="hidden" name="applicationId" value="@application.Id" />
+                                                        <input type="hidden" name="itemId" value="@item.Id" />
+                                                        <input type="text"
+                                                               name="DecisionReason"
+                                                               class="form-control form-control-sm"
+                                                               placeholder="Required rejection reason"
+                                                               required />
+                                                        <button class="btn btn-sm btn-outline-danger">Reject</button>
+                                                    </form>
+                                                </div>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    @if (application.Status is "Approved" or "PartiallyApproved")
+                    {
+                        <form method="post" asp-page-handler="Complete" class="mt-3">
+                            <input type="hidden" name="applicationId" value="@application.Id" />
+                            <button class="btn btn-primary">Mark approved licenses completed</button>
+                        </form>
+                    }
+                </div>
+            </article>
+        }
+    </div>
+}
