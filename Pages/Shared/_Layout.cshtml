@@ -90,8 +90,9 @@
     var canOpenPageAccessRules = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/PageAccessRules");
     var canOpenAccessCardGroups = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/AccessCardGroups");
     var canOpenTemporaryAccessGroups = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/TemporaryAccessGroups");
+    var canOpenLicenseProducts = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/LicenseProducts");
 
-    var canOpenRequests = canOpenUserChangeQueue || canOpenUpdateUser || canOpenAddAssignment || canOpenSupervisor || canOpenApprovals || canOpenUpcomingChanges;
+    var canOpenRequests = canOpenUserChangeQueue || canOpenUpdateUser || canOpenAddAssignment || canOpenSupervisor || canOpenApprovals || canOpenUpcomingChanges || canOpenLicenseReview;
     var canOpenReports = canOpenSnapshot;
     var canOpenSettings = canOpenGroupRules || canOpenTranslations || canOpenDomains || canOpenEmailTemplates || canOpenPageAccessRules || canOpenAccessCardGroups || canOpenTemporaryAccessGroups || canOpenLicenseProducts;
 
@@ -203,10 +204,6 @@
                                     {
                                         <li><a class="dropdown-item@(ActiveClass("/Requests/Approvals"))" asp-area="" asp-page="/Requests/Approvals">@T("nav.approvals")</a></li>
                                     }
-                                    @if (canOpenLicenseReview)
-                                    {
-                                        <li><a class="dropdown-item@(ActiveClass("/LicenseRequests/ITReview"))" asp-area="" asp-page="/LicenseRequests/ITReview">@T("nav.licenseReview")</a></li>
-                                    }
                                     @if (canOpenUpcomingChanges)
                                     {
                                         <li><a class="dropdown-item@(ActiveClass("/Requests/Upcoming"))" asp-area="" asp-page="/Requests/Upcoming">@T("nav.upcomingChanges")</a></li>
@@ -215,6 +212,11 @@
                                     {
                                         <li><hr class="dropdown-divider" /></li>
                                         <li><a class="dropdown-item@(ActiveClass("/Requests/Supervisor"))" asp-area="" asp-page="/Requests/Supervisor">@T("nav.supervisor")</a></li>
+                                    }
+                                    @if (canOpenLicenseReview)
+                                    {
+                                        <li><hr class="dropdown-divider" /></li>
+                                        <li><a class="dropdown-item@(ActiveClass("/LicenseRequests/ITReview"))" asp-area="" asp-page="/LicenseRequests/ITReview">@T("nav.licenseReview")</a></li>
                                     }
                                 </ul>
                             </li>
