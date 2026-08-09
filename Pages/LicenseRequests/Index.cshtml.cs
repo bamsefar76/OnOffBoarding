@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Data.SqlClient;
@@ -88,6 +88,14 @@ public sealed class IndexModel : PageModel
         {
             ValidationIssues.Add(new ValidationIssue(
                 "licenseRequests.validation.unavailableLicense"));
+        }
+
+        if (selected.Any(x =>
+                x.FulfillmentType == "AdGroup" &&
+                string.IsNullOrWhiteSpace(x.AdGroupName)))
+        {
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.adGroupConfigurationMissing"));
         }
 
         var duplicateFamily = selected
@@ -205,13 +213,19 @@ INSERT INTO dbo.LicenseApplicationItems
 (
     LicenseApplicationId,
     LicenseProductId,
-    Status
+    Status,
+    FulfillmentType,
+    AdGroupName,
+    ProvisioningStatus
 )
 VALUES
 (
     @ApplicationId,
     @ProductId,
-    N'Pending'
+    N'Pending',
+    @FulfillmentType,
+    @AdGroupName,
+    NULL
 );";
 
                 itemCommand.Parameters.AddBigInt(
@@ -220,6 +234,14 @@ VALUES
                 itemCommand.Parameters.AddInt(
                     "@ProductId",
                     license.Id);
+                itemCommand.Parameters.AddRequiredNVarChar(
+                    "@FulfillmentType",
+                    license.FulfillmentType,
+                    20);
+                itemCommand.Parameters.AddNVarChar(
+                    "@AdGroupName",
+                    license.AdGroupName,
+                    300);
 
                 await itemCommand.ExecuteNonQueryAsync(
                     HttpContext.RequestAborted);
@@ -404,7 +426,9 @@ SELECT
     Name,
     Description,
     ProductFamily,
-    LicenseLevel
+    LicenseLevel,
+    FulfillmentType,
+    AdGroupName
 FROM dbo.LicenseProducts
 WHERE Active = 1
 ORDER BY
@@ -455,7 +479,9 @@ SELECT
     Name,
     Description,
     ProductFamily,
-    LicenseLevel
+    LicenseLevel,
+    FulfillmentType,
+    AdGroupName
 FROM dbo.LicenseProducts
 WHERE Active = 1
   AND LicenseProductId IN
@@ -552,7 +578,11 @@ SELECT
     item.LicenseApplicationItemId,
     product.Name,
     item.Status,
-    item.ItReason
+    item.ItReason,
+    item.FulfillmentType,
+    item.AdGroupName,
+    item.ProvisioningStatus,
+    item.ProvisioningLastError
 FROM dbo.LicenseApplications AS application
 INNER JOIN dbo.LicenseApplicationItems AS item
     ON item.LicenseApplicationId =
@@ -596,7 +626,11 @@ ORDER BY product.Name;";
                     Id = reader.GetInt64(10),
                     Name = Get(reader, 11),
                     Status = Get(reader, 12),
-                    Reason = Get(reader, 13)
+                    Reason = Get(reader, 13),
+                    FulfillmentType = Get(reader, 14),
+                    AdGroupName = Get(reader, 15),
+                    ProvisioningStatus = Get(reader, 16),
+                    ProvisioningLastError = Get(reader, 17)
                 });
         }
 
@@ -614,7 +648,9 @@ ORDER BY product.Name;";
             LicenseLevel =
                 reader.IsDBNull(4)
                     ? null
-                    : reader.GetInt32(4)
+                    : reader.GetInt32(4),
+            FulfillmentType = Get(reader, 5),
+            AdGroupName = Get(reader, 6)
         };
 
     private static string Get(
@@ -646,6 +682,8 @@ ORDER BY product.Name;";
         public string Description { get; init; } = "";
         public string ProductFamily { get; init; } = "";
         public int? LicenseLevel { get; init; }
+        public string FulfillmentType { get; init; } = "Manual";
+        public string AdGroupName { get; init; } = "";
     }
 
     public sealed class ApplicationDetails
@@ -669,5 +707,9 @@ ORDER BY product.Name;";
         public string Name { get; init; } = "";
         public string Status { get; init; } = "";
         public string Reason { get; init; } = "";
+        public string FulfillmentType { get; init; } = "Manual";
+        public string AdGroupName { get; init; } = "";
+        public string ProvisioningStatus { get; init; } = "";
+        public string ProvisioningLastError { get; init; } = "";
     }
 }

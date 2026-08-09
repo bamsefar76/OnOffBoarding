@@ -24,6 +24,12 @@
         ["licenseProducts.productFamily"] = "Product family",
         ["licenseProducts.level"] = "Level",
         ["licenseProducts.sortOrder"] = "Order",
+        ["licenseProducts.fulfillmentType"] = "Workflow",
+        ["licenseProducts.fulfillmentManual"] = "Manual IT fulfillment",
+        ["licenseProducts.fulfillmentAdGroup"] = "Automatic AD group",
+        ["licenseProducts.fulfillmentHelp"] = "Manual licenses require IT review. AD group licenses are provisioned automatically after manager approval.",
+        ["licenseProducts.adGroupName"] = "AD group",
+        ["licenseProducts.adGroupHelp"] = "The user is added to this AD group after manager approval.",
         ["licenseProducts.available"] = "Available for request",
         ["licenseProducts.familyHelp"] = "Licenses with the same non-empty product family cannot be requested together.",
         ["licenseProducts.editLicense"] = "Edit license",
@@ -39,7 +45,10 @@
         ["licenseProducts.validation.nameRequired"] = "Name is required.",
         ["licenseProducts.validation.nameTooLong"] = "Name cannot be longer than 200 characters.",
         ["licenseProducts.validation.descriptionTooLong"] = "Description cannot be longer than 1000 characters.",
-        ["licenseProducts.validation.familyTooLong"] = "Product family cannot be longer than 100 characters."
+        ["licenseProducts.validation.familyTooLong"] = "Product family cannot be longer than 100 characters.",
+        ["licenseProducts.validation.fulfillmentInvalid"] = "Select a valid fulfillment workflow.",
+        ["licenseProducts.validation.adGroupRequired"] = "AD group is required for automatic fulfillment.",
+        ["licenseProducts.validation.adGroupTooLong"] = "AD group cannot be longer than 300 characters."
     };
 
     var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
@@ -66,6 +75,9 @@
         "licenseProducts.validation.nameTooLong" => T("licenseProducts.validation.nameTooLong"),
         "licenseProducts.validation.descriptionTooLong" => T("licenseProducts.validation.descriptionTooLong"),
         "licenseProducts.validation.familyTooLong" => T("licenseProducts.validation.familyTooLong"),
+        "licenseProducts.validation.fulfillmentInvalid" => T("licenseProducts.validation.fulfillmentInvalid"),
+        "licenseProducts.validation.adGroupRequired" => T("licenseProducts.validation.adGroupRequired"),
+        "licenseProducts.validation.adGroupTooLong" => T("licenseProducts.validation.adGroupTooLong"),
         _ => ""
     };
 }
@@ -122,6 +134,7 @@
                             <th>@T("licenseProducts.name")</th>
                             <th>@T("licenseProducts.productFamily")</th>
                             <th>@T("licenseProducts.level")</th>
+                            <th>@T("licenseProducts.fulfillmentType")</th>
                             <th>@T("common.active")</th>
                             <th>@T("licenseProducts.sortOrder")</th>
                             <th class="text-end"></th>
@@ -131,7 +144,7 @@
                     @if (Model.Products.Count == 0)
                     {
                         <tr>
-                            <td colspan="6" class="text-body-secondary py-4 text-center">
+                            <td colspan="7" class="text-body-secondary py-4 text-center">
                                 @T("licenseProducts.noProducts")
                             </td>
                         </tr>
@@ -154,6 +167,17 @@
                                         : product.ProductFamily)
                                 </td>
                                 <td>@(product.LicenseLevel?.ToString() ?? T("common.notSet"))</td>
+                                <td>
+                                    <div class="fw-semibold">
+                                        @(product.FulfillmentType == "AdGroup"
+                                            ? T("licenseProducts.fulfillmentAdGroup")
+                                            : T("licenseProducts.fulfillmentManual"))
+                                    </div>
+                                    @if (product.FulfillmentType == "AdGroup" && !string.IsNullOrWhiteSpace(product.AdGroupName))
+                                    {
+                                        <div class="small text-body-secondary text-break">@product.AdGroupName</div>
+                                    }
+                                </td>
                                 <td>
                                     <span class="badge app-status-badge @(product.Active ? "app-status-badge-success" : "app-status-badge-secondary")">
                                         @(product.Active ? T("common.active") : T("common.inactive"))
@@ -205,6 +229,21 @@
                         <div class="form-text">@T("licenseProducts.familyHelp")</div>
                     </div>
 
+                    <div class="mb-3">
+                        <label asp-for="Edit.FulfillmentType" class="form-label">@T("licenseProducts.fulfillmentType")</label>
+                        <select asp-for="Edit.FulfillmentType" class="form-select" id="license-fulfillment-type">
+                            <option value="Manual">@T("licenseProducts.fulfillmentManual")</option>
+                            <option value="AdGroup">@T("licenseProducts.fulfillmentAdGroup")</option>
+                        </select>
+                        <div class="form-text">@T("licenseProducts.fulfillmentHelp")</div>
+                    </div>
+
+                    <div class="mb-3" id="license-ad-group-panel">
+                        <label asp-for="Edit.AdGroupName" class="form-label">@T("licenseProducts.adGroupName")</label>
+                        <input asp-for="Edit.AdGroupName" class="form-control" maxlength="300" autocomplete="off" />
+                        <div class="form-text">@T("licenseProducts.adGroupHelp")</div>
+                    </div>
+
                     <div class="row g-3">
                         <div class="col-sm-6">
                             <label asp-for="Edit.LicenseLevel" class="form-label">@T("licenseProducts.level")</label>
@@ -244,6 +283,24 @@
         </div>
     </div>
 </div>
+
+<script>
+    (() => {
+        const type = document.getElementById('license-fulfillment-type');
+        const panel = document.getElementById('license-ad-group-panel');
+        const input = document.getElementById('Edit_AdGroupName');
+        if (!type || !panel || !input) return;
+
+        const sync = () => {
+            const isAdGroup = type.value === 'AdGroup';
+            panel.hidden = !isAdGroup;
+            input.disabled = !isAdGroup;
+        };
+
+        type.addEventListener('change', sync);
+        sync();
+    })();
+</script>
 
 <style>
     .license-product-editor {

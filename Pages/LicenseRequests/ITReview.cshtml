@@ -28,6 +28,11 @@
         ["licenseReview.license"] = "License",
         ["licenseReview.itReason"] = "IT reason",
         ["licenseReview.itActions"] = "IT actions",
+        ["licenseReview.workflowManual"] = "Manual IT fulfillment",
+        ["licenseReview.workflowAdGroup"] = "Automatic AD group",
+        ["licenseReview.adGroup"] = "AD group",
+        ["licenseReview.provisioningError"] = "Provisioning error",
+        ["licenseReview.retryProvisioning"] = "Retry AD provisioning",
         ["licenseReview.approve"] = "Approve",
         ["licenseReview.reject"] = "Reject",
         ["licenseReview.rejectionReason"] = "Rejection reason",
@@ -44,8 +49,11 @@
         ["licenseReview.openApplicationAria"] = "Open license application {0}",
         ["licenseReview.message.rejectionReasonRequired"] = "A rejection reason is required.",
         ["licenseReview.message.completed"] = "Application {0} was completed.",
+        ["licenseReview.message.completionUnavailable"] = "Application {0} cannot be completed while license fulfillment is still pending or failed.",
         ["licenseReview.message.itemApproved"] = "License item {0} was approved.",
         ["licenseReview.message.itemRejected"] = "License item {0} was rejected.",
+        ["licenseReview.message.provisioningRetried"] = "AD provisioning was queued again for license item {0}.",
+        ["licenseReview.message.provisioningRetryUnavailable"] = "AD provisioning could not be retried for license item {0}.",
         ["licenseStatus.awaitingManager"] = "Awaiting manager",
         ["licenseStatus.awaitingIT"] = "Awaiting IT",
         ["licenseStatus.approved"] = "Approved",
@@ -53,10 +61,16 @@
         ["licenseStatus.completed"] = "Completed",
         ["licenseStatus.managerRejected"] = "Rejected by manager",
         ["licenseStatus.itRejected"] = "Rejected by IT",
+        ["licenseStatus.provisioning"] = "Provisioning",
+        ["licenseStatus.provisioningFailed"] = "Provisioning failed",
         ["licenseItemStatus.pending"] = "Pending",
         ["licenseItemStatus.approved"] = "Approved",
         ["licenseItemStatus.rejected"] = "Rejected",
         ["licenseItemStatus.completed"] = "Completed",
+        ["licenseProvisioning.pending"] = "Queued",
+        ["licenseProvisioning.processing"] = "Processing",
+        ["licenseProvisioning.completed"] = "Provisioned",
+        ["licenseProvisioning.failed"] = "Failed",
         ["licenseDecision.approved"] = "Approved",
         ["licenseDecision.rejected"] = "Rejected"
     };
@@ -77,6 +91,8 @@
         "Completed" => T("licenseStatus.completed"),
         "ManagerRejected" => T("licenseStatus.managerRejected"),
         "ITRejected" => T("licenseStatus.itRejected"),
+        "Provisioning" => T("licenseStatus.provisioning"),
+        "ProvisioningFailed" => T("licenseStatus.provisioningFailed"),
         "Pending" => T("licenseItemStatus.pending"),
         "Rejected" => T("licenseItemStatus.rejected"),
         _ => status
@@ -105,7 +121,8 @@
         "Approved" => "app-status-badge app-status-badge-success",
         "PartiallyApproved" => "app-status-badge app-status-badge-info",
         "Completed" => "app-status-badge app-status-badge-success",
-        "ManagerRejected" or "ITRejected" => "app-status-badge app-status-badge-danger",
+        "Provisioning" => "app-status-badge app-status-badge-info",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "app-status-badge app-status-badge-danger",
         _ => "app-status-badge app-status-badge-secondary"
     };
 
@@ -115,7 +132,8 @@
         "AwaitingIT" => "license-status-awaiting-it",
         "Approved" or "Completed" => "license-status-approved",
         "PartiallyApproved" => "license-status-partial",
-        "ManagerRejected" or "ITRejected" => "license-status-rejected",
+        "Provisioning" => "license-status-partial",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "license-status-rejected",
         _ => "license-status-other"
     };
 
@@ -123,8 +141,11 @@
     {
         "licenseReview.message.rejectionReasonRequired" => T("licenseReview.message.rejectionReasonRequired"),
         "licenseReview.message.completed" => F("licenseReview.message.completed", Model.StatusMessageArgument ?? ""),
+        "licenseReview.message.completionUnavailable" => F("licenseReview.message.completionUnavailable", Model.StatusMessageArgument ?? ""),
         "licenseReview.message.itemApproved" => F("licenseReview.message.itemApproved", Model.StatusMessageArgument ?? ""),
         "licenseReview.message.itemRejected" => F("licenseReview.message.itemRejected", Model.StatusMessageArgument ?? ""),
+        "licenseReview.message.provisioningRetried" => F("licenseReview.message.provisioningRetried", Model.StatusMessageArgument ?? ""),
+        "licenseReview.message.provisioningRetryUnavailable" => F("licenseReview.message.provisioningRetryUnavailable", Model.StatusMessageArgument ?? ""),
         _ => ""
     };
 
@@ -169,6 +190,8 @@
                     <option value="AwaitingIT">@T("licenseStatus.awaitingIT")</option>
                     <option value="Approved">@T("licenseStatus.approved")</option>
                     <option value="PartiallyApproved">@T("licenseStatus.partiallyApproved")</option>
+                    <option value="Provisioning">@T("licenseStatus.provisioning")</option>
+                    <option value="ProvisioningFailed">@T("licenseStatus.provisioningFailed")</option>
                     <option value="Completed">@T("licenseStatus.completed")</option>
                     <option value="ManagerRejected">@T("licenseStatus.managerRejected")</option>
                     <option value="ITRejected">@T("licenseStatus.itRejected")</option>
@@ -297,12 +320,56 @@ else
                                 <tbody>
                                 @foreach (var item in application.Items)
                                 {
+                                    var isAdGroup = item.FulfillmentType == "AdGroup";
+                                    var displayedStatus = isAdGroup && !string.IsNullOrWhiteSpace(item.ProvisioningStatus)
+                                        ? item.ProvisioningStatus switch
+                                        {
+                                            "Pending" => T("licenseProvisioning.pending"),
+                                            "Processing" => T("licenseProvisioning.processing"),
+                                            "Completed" => T("licenseProvisioning.completed"),
+                                            "Failed" => T("licenseProvisioning.failed"),
+                                            _ => item.ProvisioningStatus
+                                        }
+                                        : ItemStatusText(item.Status);
+
                                     <tr>
-                                        <td class="fw-semibold">@item.Name</td>
-                                        <td>@ItemStatusText(item.Status)</td>
-                                        <td>@(string.IsNullOrWhiteSpace(item.Reason) ? T("common.notProvided") : item.Reason)</td>
+                                        <td>
+                                            <div class="fw-semibold">@item.Name</div>
+                                            <span class="badge app-status-badge @(isAdGroup ? "app-status-badge-info" : "app-status-badge-secondary") mt-1">
+                                                @(isAdGroup ? T("licenseReview.workflowAdGroup") : T("licenseReview.workflowManual"))
+                                            </span>
+                                            @if (isAdGroup && !string.IsNullOrWhiteSpace(item.AdGroupName))
+                                            {
+                                                <div class="small text-body-secondary text-break mt-1">@T("licenseReview.adGroup"): @item.AdGroupName</div>
+                                            }
+                                        </td>
+                                        <td>@displayedStatus</td>
+                                        <td>
+                                            @if (isAdGroup && !string.IsNullOrWhiteSpace(item.ProvisioningLastError))
+                                            {
+                                                <div class="text-danger small"><strong>@T("licenseReview.provisioningError"):</strong> @item.ProvisioningLastError</div>
+                                            }
+                                            else
+                                            {
+                                                @(string.IsNullOrWhiteSpace(item.Reason) ? T("common.notProvided") : item.Reason)
+                                            }
+                                        </td>
                                         <td class="text-end">
-                                            @if (application.Status is "AwaitingIT" or "PartiallyApproved" && item.Status == "Pending")
+                                            @if (isAdGroup && item.ProvisioningStatus == "Failed")
+                                            {
+                                                <form method="post" asp-page-handler="RetryProvisioning" class="d-inline">
+                                                    <input type="hidden" name="applicationId" value="@application.Id" />
+                                                    <input type="hidden" name="itemId" value="@item.Id" />
+                                                    <input type="hidden" asp-for="Search" />
+                                                    <input type="hidden" asp-for="StatusFilter" />
+                                                    <input type="hidden" asp-for="RequesterFilter" />
+                                                    <input type="hidden" asp-for="LicenseFilter" />
+                                                    <input type="hidden" name="DateFilter" value="@dateFilterValue" />
+                                                    <input type="hidden" asp-for="PageNumber" />
+                                                    <button class="btn btn-sm btn-outline-primary" type="submit">@T("licenseReview.retryProvisioning")</button>
+                                                </form>
+                                            }
+                                            else if (!isAdGroup && (application.Status is "AwaitingIT" or "PartiallyApproved") && item.Status == "Pending")
                                             {
                                                 <div class="d-flex flex-wrap justify-content-end gap-2">
                                                     <form method="post" asp-page-handler="Approve">

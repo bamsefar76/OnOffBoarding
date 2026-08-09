@@ -14,6 +14,8 @@
         ["licenseRequests.requestLicenses"] = "Request licenses",
         ["licenseRequests.noLicenses"] = "No licenses are currently available for request.",
         ["licenseRequests.level"] = "Level",
+        ["licenseRequests.workflowManual"] = "Manual IT fulfillment",
+        ["licenseRequests.workflowAdGroup"] = "Automatic after manager approval",
         ["licenseRequests.businessReason"] = "Business reason",
         ["licenseRequests.submit"] = "Submit to manager",
         ["licenseRequests.myRequests"] = "My license requests",
@@ -28,6 +30,7 @@
         ["licenseRequests.validation.managerMissing"] = "Your manager or manager email address is missing.",
         ["licenseRequests.validation.selectLicense"] = "Select at least one license.",
         ["licenseRequests.validation.unavailableLicense"] = "One or more selected licenses are unavailable.",
+        ["licenseRequests.validation.adGroupConfigurationMissing"] = "One or more automatic licenses are missing their AD group configuration. Contact IT.",
         ["licenseRequests.validation.duplicateFamily"] = "Select only one license from product family '{0}'.",
         ["licenseRequests.validation.businessReasonRequired"] = "Business reason is required.",
         ["licenseRequests.validation.businessReasonTooLong"] = "Business reason cannot be longer than 2000 characters.",
@@ -41,6 +44,12 @@
         ["licenseStatus.completed"] = "Completed",
         ["licenseStatus.managerRejected"] = "Rejected by manager",
         ["licenseStatus.itRejected"] = "Rejected by IT",
+        ["licenseStatus.provisioning"] = "Provisioning",
+        ["licenseStatus.provisioningFailed"] = "Provisioning failed",
+        ["licenseProvisioning.pending"] = "Queued",
+        ["licenseProvisioning.processing"] = "Processing",
+        ["licenseProvisioning.completed"] = "Provisioned",
+        ["licenseProvisioning.failed"] = "Failed",
         ["licenseDecision.approved"] = "Approved",
         ["licenseDecision.rejected"] = "Rejected"
     };
@@ -61,6 +70,8 @@
         "Completed" => T("licenseStatus.completed"),
         "ManagerRejected" => T("licenseStatus.managerRejected"),
         "ITRejected" => T("licenseStatus.itRejected"),
+        "Provisioning" => T("licenseStatus.provisioning"),
+        "ProvisioningFailed" => T("licenseStatus.provisioningFailed"),
         _ => status
     };
 
@@ -77,7 +88,8 @@
         "AwaitingIT" => "app-status-badge app-status-badge-primary",
         "Approved" or "Completed" => "app-status-badge app-status-badge-success",
         "PartiallyApproved" => "app-status-badge app-status-badge-info",
-        "ManagerRejected" or "ITRejected" => "app-status-badge app-status-badge-danger",
+        "Provisioning" => "app-status-badge app-status-badge-info",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "app-status-badge app-status-badge-danger",
         _ => "app-status-badge app-status-badge-secondary"
     };
 
@@ -87,7 +99,8 @@
         "AwaitingIT" => "license-request-awaiting-it",
         "Approved" or "Completed" => "license-request-approved",
         "PartiallyApproved" => "license-request-partial",
-        "ManagerRejected" or "ITRejected" => "license-request-rejected",
+        "Provisioning" => "license-request-partial",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "license-request-rejected",
         _ => "license-request-other"
     };
 
@@ -97,6 +110,7 @@
         "licenseRequests.validation.managerMissing" => T("licenseRequests.validation.managerMissing"),
         "licenseRequests.validation.selectLicense" => T("licenseRequests.validation.selectLicense"),
         "licenseRequests.validation.unavailableLicense" => T("licenseRequests.validation.unavailableLicense"),
+        "licenseRequests.validation.adGroupConfigurationMissing" => T("licenseRequests.validation.adGroupConfigurationMissing"),
         "licenseRequests.validation.duplicateFamily" => F("licenseRequests.validation.duplicateFamily", issue.Argument ?? ""),
         "licenseRequests.validation.businessReasonRequired" => T("licenseRequests.validation.businessReasonRequired"),
         "licenseRequests.validation.businessReasonTooLong" => T("licenseRequests.validation.businessReasonTooLong"),
@@ -201,6 +215,14 @@
                                     </label>
                                 </div>
 
+                                <div class="mt-2">
+                                    <span class="badge app-status-badge @(license.FulfillmentType == "AdGroup" ? "app-status-badge-info" : "app-status-badge-secondary")">
+                                        @(license.FulfillmentType == "AdGroup"
+                                            ? T("licenseRequests.workflowAdGroup")
+                                            : T("licenseRequests.workflowManual"))
+                                    </span>
+                                </div>
+
                                 @if (!string.IsNullOrWhiteSpace(license.Description))
                                 {
                                     <div class="small text-body-secondary mt-2">@license.Description</div>
@@ -264,7 +286,26 @@
                         <div class="row g-3">
                             <div class="col-lg-6">
                                 <div class="license-request-label">@T("licenseRequests.licenses")</div>
-                                <div>@string.Join(", ", application.Items.Select(x => x.Name))</div>
+                                <ul class="mb-0 ps-3">
+                                    @foreach (var item in application.Items)
+                                    {
+                                        <li>
+                                            @item.Name
+                                            @if (item.FulfillmentType == "AdGroup" && !string.IsNullOrWhiteSpace(item.ProvisioningStatus))
+                                            {
+                                                var provisioningText = item.ProvisioningStatus switch
+                                                {
+                                                    "Pending" => T("licenseProvisioning.pending"),
+                                                    "Processing" => T("licenseProvisioning.processing"),
+                                                    "Completed" => T("licenseProvisioning.completed"),
+                                                    "Failed" => T("licenseProvisioning.failed"),
+                                                    _ => item.ProvisioningStatus
+                                                };
+                                                <span class="small text-body-secondary"> · @provisioningText</span>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
                             </div>
                             <div class="col-lg-3">
                                 <div class="license-request-label">@T("licenseRequests.submitted")</div>

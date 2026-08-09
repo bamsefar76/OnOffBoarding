@@ -50,8 +50,11 @@ if ($program -notmatch "AddScoped<LicenseEmailService>")
 
 Write-Host ""
 Write-Host "Run Database\LicenseRequests.Web.Required.sql in SSMS."
+Write-Host "Run Database\LicenseRequests.Fulfillment.sql in SSMS for manual/AD-group fulfillment support."
 Write-Host "Run Database\LicenseRequests.UiTexts.sql in SSMS for license-module UI translations."
 Write-Host "Run Database\LicenseRequests.ManagerReviews.sql in SSMS to copy ManagerReview access rules to the manager inbox."
 Write-Host "Run Database\LicenseRequests.EmailTemplates.sql in SSMS for standard license email templates."
+Write-Host "Run Database\AssignmentLicenses.sql in SSMS to enable license selections on Add Assignment."
+Write-Host "Run Database\AssignmentLicenses.UiTexts.sql in SSMS for Add Assignment license translations."
 Write-Host "Then run: dotnet clean; dotnet run"
 Write-Host "Open: /LicenseRequests"

@@ -1,4 +1,4 @@
-﻿@page
+@page
 @model UserChangeQueueWeb.Pages.LicenseRequests.ManagerReviewModel
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
@@ -8,7 +8,7 @@
         ["common.status"] = "Status",
         ["common.notProvided"] = "Not provided",
         ["managerLicenseReview.title"] = "Review license application",
-        ["managerLicenseReview.help"] = "Review the business need before the request is sent to IT.",
+        ["managerLicenseReview.helpWorkflows"] = "Review the business need before license fulfillment begins.",
         ["managerLicenseReview.applicationNumber"] = "Application #{0}",
         ["managerLicenseReview.requestedBy"] = "Requested by",
         ["managerLicenseReview.licenses"] = "Licenses",
@@ -18,10 +18,12 @@
         ["managerLicenseReview.reason"] = "Reason",
         ["managerLicenseReview.decisionReason"] = "Decision reason",
         ["managerLicenseReview.decisionReasonHelp"] = "A reason is required for both approval and rejection.",
-        ["managerLicenseReview.approve"] = "Approve and send to IT",
+        ["managerLicenseReview.approveRequest"] = "Approve request",
+        ["managerLicenseReview.workflowManual"] = "Manual IT fulfillment",
+        ["managerLicenseReview.workflowAdGroup"] = "Automatic AD group",
         ["managerLicenseReview.backToReviews"] = "Back to my license approvals",
         ["managerLicenseReview.reject"] = "Reject",
-        ["managerLicenseReview.message.approved"] = "Approved and sent to IT.",
+        ["managerLicenseReview.message.approvedProcessing"] = "Request approved. License fulfillment has started.",
         ["managerLicenseReview.message.rejected"] = "Application rejected.",
         ["managerLicenseReview.validation.reasonRequired"] = "A reason is required for both approval and rejection.",
         ["managerLicenseReview.validation.reasonTooLong"] = "The reason cannot be longer than 2000 characters.",
@@ -32,6 +34,8 @@
         ["licenseStatus.completed"] = "Completed",
         ["licenseStatus.managerRejected"] = "Rejected by manager",
         ["licenseStatus.itRejected"] = "Rejected by IT",
+        ["licenseStatus.provisioning"] = "Provisioning",
+        ["licenseStatus.provisioningFailed"] = "Provisioning failed",
         ["licenseDecision.approved"] = "Approved",
         ["licenseDecision.rejected"] = "Rejected"
     };
@@ -52,6 +56,8 @@
         "Completed" => T("licenseStatus.completed"),
         "ManagerRejected" => T("licenseStatus.managerRejected"),
         "ITRejected" => T("licenseStatus.itRejected"),
+        "Provisioning" => T("licenseStatus.provisioning"),
+        "ProvisioningFailed" => T("licenseStatus.provisioningFailed"),
         _ => status
     };
 
@@ -68,7 +74,8 @@
         "AwaitingIT" => "app-status-badge app-status-badge-primary",
         "Approved" or "Completed" => "app-status-badge app-status-badge-success",
         "PartiallyApproved" => "app-status-badge app-status-badge-info",
-        "ManagerRejected" or "ITRejected" => "app-status-badge app-status-badge-danger",
+        "Provisioning" => "app-status-badge app-status-badge-info",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "app-status-badge app-status-badge-danger",
         _ => "app-status-badge app-status-badge-secondary"
     };
 
@@ -78,13 +85,14 @@
         "AwaitingIT" => "manager-review-it",
         "Approved" or "Completed" => "manager-review-approved",
         "PartiallyApproved" => "manager-review-partial",
-        "ManagerRejected" or "ITRejected" => "manager-review-rejected",
+        "Provisioning" => "manager-review-partial",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "manager-review-rejected",
         _ => "manager-review-other"
     };
 
     var statusMessage = Model.StatusMessageKey switch
     {
-        "managerLicenseReview.message.approved" => T("managerLicenseReview.message.approved"),
+        "managerLicenseReview.message.approvedProcessing" => T("managerLicenseReview.message.approvedProcessing"),
         "managerLicenseReview.message.rejected" => T("managerLicenseReview.message.rejected"),
         _ => ""
     };
@@ -100,7 +108,7 @@
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
         <h1 class="h2 mb-1">@T("managerLicenseReview.title")</h1>
-        <p class="text-body-secondary mb-0">@T("managerLicenseReview.help")</p>
+        <p class="text-body-secondary mb-0">@T("managerLicenseReview.helpWorkflows")</p>
     </div>
     <a asp-page="/LicenseRequests/ManagerReviews" class="btn btn-outline-secondary">
         @T("managerLicenseReview.backToReviews")
@@ -148,7 +156,14 @@
                     <ul class="mb-0 ps-3">
                         @foreach (var item in application.Items)
                         {
-                            <li>@item.Name</li>
+                            <li class="mb-1">
+                                @item.Name
+                                <span class="badge app-status-badge @(item.FulfillmentType == "AdGroup" ? "app-status-badge-info" : "app-status-badge-secondary") ms-1">
+                                    @(item.FulfillmentType == "AdGroup"
+                                        ? T("managerLicenseReview.workflowAdGroup")
+                                        : T("managerLicenseReview.workflowManual"))
+                                </span>
+                            </li>
                         }
                     </ul>
                 </div>
@@ -194,7 +209,7 @@
 
                 <div class="d-flex flex-wrap gap-2">
                     <button class="btn btn-success" type="submit" asp-page-handler="Approve">
-                        @T("managerLicenseReview.approve")
+                        @T("managerLicenseReview.approveRequest")
                     </button>
                     <button class="btn btn-outline-danger" type="submit" asp-page-handler="Reject">
                         @T("managerLicenseReview.reject")

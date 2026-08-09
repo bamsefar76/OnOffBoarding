@@ -34,12 +34,12 @@ public sealed class ManagerReviewModel : PageModel
         await LoadAuthorizedAsync() ? Page() : Forbid();
 
     public Task<IActionResult> OnPostApproveAsync() =>
-        ManagerDecisionAsync("Approved", "AwaitingIT");
+        ManagerDecisionAsync("Approved");
 
     public Task<IActionResult> OnPostRejectAsync() =>
-        ManagerDecisionAsync("Rejected", "ManagerRejected");
+        ManagerDecisionAsync("Rejected");
 
-    private async Task<IActionResult> ManagerDecisionAsync(string decision, string newStatus)
+    private async Task<IActionResult> ManagerDecisionAsync(string decision)
     {
         DecisionReason = DecisionReason?.Trim() ?? "";
 
@@ -69,39 +69,101 @@ public sealed class ManagerReviewModel : PageModel
                 return Forbid();
             }
 
-            await using var update = connection.CreateCommand();
-            update.Transaction = transaction;
-            update.CommandText = @"
+            var hasManual = Application.Items.Any(x => x.FulfillmentType == "Manual");
+            var hasAdGroup = Application.Items.Any(x => x.FulfillmentType == "AdGroup");
+
+            await using (var update = connection.CreateCommand())
+            {
+                update.Transaction = transaction;
+                update.CommandText = @"
 UPDATE dbo.LicenseApplications
-SET Status=@Status,
-    ManagerDecision=@Decision,
+SET ManagerDecision=@Decision,
     ManagerReason=@Reason,
     ManagerDecisionAt=SYSDATETIME(),
     ManagerDecisionBy=@ChangedBy
 WHERE LicenseApplicationId=@Id
   AND Status=N'AwaitingManager';";
-            update.Parameters.AddRequiredNVarChar("@Status", newStatus, 40);
-            update.Parameters.AddRequiredNVarChar("@Decision", decision, 20);
-            update.Parameters.AddRequiredNVarChar("@Reason", DecisionReason, 2000);
-            update.Parameters.AddRequiredNVarChar(
-                "@ChangedBy",
-                User.Identity?.Name ?? currentSam,
-                300);
-            update.Parameters.AddBigInt("@Id", Id);
+                update.Parameters.AddRequiredNVarChar("@Decision", decision, 20);
+                update.Parameters.AddRequiredNVarChar("@Reason", DecisionReason, 2000);
+                update.Parameters.AddRequiredNVarChar(
+                    "@ChangedBy",
+                    User.Identity?.Name ?? currentSam,
+                    300);
+                update.Parameters.AddBigInt("@Id", Id);
 
-            if (await update.ExecuteNonQueryAsync(HttpContext.RequestAborted) != 1)
-                throw new InvalidOperationException("This application has already been decided.");
+                if (await update.ExecuteNonQueryAsync(HttpContext.RequestAborted) != 1)
+                    throw new InvalidOperationException("This application has already been decided.");
+            }
+
+            if (decision == "Rejected")
+            {
+                await using var reject = connection.CreateCommand();
+                reject.Transaction = transaction;
+                reject.CommandText = @"
+UPDATE dbo.LicenseApplicationItems
+SET Status = CASE WHEN Status=N'Pending' THEN N'Rejected' ELSE Status END,
+    ProvisioningStatus = NULL,
+    ProvisioningLockId = NULL,
+    ProvisioningLockedAt = NULL
+WHERE LicenseApplicationId=@Id;
+
+UPDATE dbo.LicenseApplications
+SET Status=N'ManagerRejected'
+WHERE LicenseApplicationId=@Id;";
+                reject.Parameters.AddBigInt("@Id", Id);
+                await reject.ExecuteNonQueryAsync(HttpContext.RequestAborted);
+            }
+            else
+            {
+                await using var approve = connection.CreateCommand();
+                approve.Transaction = transaction;
+                approve.CommandText = @"
+UPDATE dbo.LicenseApplicationItems
+SET Status = CASE WHEN FulfillmentType=N'AdGroup' THEN N'Approved' ELSE N'Pending' END,
+    ProvisioningStatus = CASE WHEN FulfillmentType=N'AdGroup' THEN N'Pending' ELSE NULL END,
+    ProvisioningAttemptCount = CASE WHEN FulfillmentType=N'AdGroup' THEN 0 ELSE ProvisioningAttemptCount END,
+    ProvisioningLastAttemptAt = NULL,
+    ProvisioningLockId = NULL,
+    ProvisioningLockedAt = NULL,
+    ProvisioningLastError = NULL
+WHERE LicenseApplicationId=@Id;
+
+UPDATE dbo.LicenseApplications
+SET Status = CASE
+    WHEN EXISTS
+    (
+        SELECT 1 FROM dbo.LicenseApplicationItems
+        WHERE LicenseApplicationId=@Id AND FulfillmentType=N'Manual' AND Status=N'Pending'
+    ) THEN N'AwaitingIT'
+    WHEN EXISTS
+    (
+        SELECT 1 FROM dbo.LicenseApplicationItems
+        WHERE LicenseApplicationId=@Id AND FulfillmentType=N'AdGroup'
+          AND ProvisioningStatus IN (N'Pending', N'Processing')
+    ) THEN N'Provisioning'
+    ELSE N'Approved'
+END
+WHERE LicenseApplicationId=@Id;";
+                approve.Parameters.AddBigInt("@Id", Id);
+                await approve.ExecuteNonQueryAsync(HttpContext.RequestAborted);
+            }
 
             var licenseText = string.Join(
                 Environment.NewLine,
                 Application.Items.Select(x => "- " + x.Name));
 
+            var templateName = decision == "Rejected"
+                ? "LicenseRequestManagerRejected"
+                : hasManual && hasAdGroup
+                    ? "LicenseRequestManagerApprovedMixed"
+                    : hasAdGroup
+                        ? "LicenseRequestManagerApprovedAutomatic"
+                        : "LicenseRequestManagerApproved";
+
             await _emails.QueueTemplateAsync(
                 connection,
                 transaction,
-                decision == "Approved"
-                    ? "LicenseRequestManagerApproved"
-                    : "LicenseRequestManagerRejected",
+                templateName,
                 Application.UserEmail,
                 Application.UserName,
                 new Dictionary<string, string?>
@@ -121,7 +183,7 @@ WHERE LicenseApplicationId=@Id
 
             await transaction.CommitAsync(HttpContext.RequestAborted);
             StatusMessageKey = decision == "Approved"
-                ? "managerLicenseReview.message.approved"
+                ? "managerLicenseReview.message.approvedProcessing"
                 : "managerLicenseReview.message.rejected";
             return RedirectToPage(new { id = Id });
         }
@@ -163,7 +225,11 @@ SELECT application.LicenseApplicationId,
        item.LicenseApplicationItemId,
        product.Name,
        item.Status,
-       item.ItReason
+       item.ItReason,
+       item.FulfillmentType,
+       item.AdGroupName,
+       item.ProvisioningStatus,
+       item.ProvisioningLastError
 FROM dbo.LicenseApplications AS application
 JOIN dbo.LicenseApplicationItems AS item
   ON item.LicenseApplicationId=application.LicenseApplicationId
@@ -197,7 +263,11 @@ ORDER BY product.Name;";
                 Id = reader.GetInt64(10),
                 Name = Get(reader, 11),
                 Status = Get(reader, 12),
-                Reason = Get(reader, 13)
+                Reason = Get(reader, 13),
+                FulfillmentType = Get(reader, 14),
+                AdGroupName = Get(reader, 15),
+                ProvisioningStatus = Get(reader, 16),
+                ProvisioningLastError = Get(reader, 17)
             });
         }
 
@@ -231,5 +301,9 @@ ORDER BY product.Name;";
         public string Name { get; init; } = "";
         public string Status { get; init; } = "";
         public string Reason { get; init; } = "";
+        public string FulfillmentType { get; init; } = "Manual";
+        public string AdGroupName { get; init; } = "";
+        public string ProvisioningStatus { get; init; } = "";
+        public string ProvisioningLastError { get; init; } = "";
     }
 }

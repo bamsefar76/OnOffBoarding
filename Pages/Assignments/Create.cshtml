@@ -3,8 +3,6 @@
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
 @{
-    ViewData["Title"] = "Add assignment";
-
     var textFallbacks = new Dictionary<string, string>
     {
         ["assignments.title"] = "Add assignment",
@@ -37,6 +35,20 @@
         ["assignments.primaryOffice"] = "primary office",
         ["assignments.noAccessCardGroups"] = "No access-card groups are available to you.",
         ["assignments.officeLicenseHelp"] = "Office license is set automatically from the selected title.",
+        ["assignments.licenses"] = "Licenses",
+        ["assignments.licensesOptional"] = "Optional",
+        ["assignments.licensesHelp"] = "Select licenses that should be requested as part of this assignment. The license workflow starts after the user change has been completed.",
+        ["assignments.licenseBusinessReason"] = "Business reason",
+        ["assignments.licenseBusinessReasonHelp"] = "Required when one or more licenses are selected.",
+        ["assignments.licenseWorkflowManual"] = "Manual",
+        ["assignments.licenseWorkflowAdGroup"] = "AD group",
+        ["assignments.noLicensesAvailable"] = "No licenses are available for request.",
+        ["assignments.licenseValidationUnavailable"] = "One or more selected licenses are no longer available.",
+        ["assignments.licenseValidationAdGroupMissing"] = "One or more automatic licenses are missing their AD group configuration. Contact IT.",
+        ["assignments.licenseValidationDuplicateFamily"] = "Only one license from product family '{0}' can be selected.",
+        ["assignments.licenseValidationManagerRequired"] = "Select a manager before requesting licenses.",
+        ["assignments.licenseValidationReasonRequired"] = "Enter a business reason for the selected licenses.",
+        ["assignments.licenseValidationReasonTooLong"] = "The license business reason cannot be longer than 2000 characters.",
         ["field.givenName"] = "Given name",
         ["field.surname"] = "Surname",
         ["field.privateEmail"] = "Private email",
@@ -64,6 +76,9 @@
     };
     var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
     string T(string key) => uiText.T(key, textFallbacks[key]);
+    string F(string key, params object[] args) => string.Format(T(key), args);
+    ViewData["Title"] = T("assignments.title");
+    var licenseSectionOpen = !string.IsNullOrWhiteSpace(Model.LicenseValidationMessageKey);
 }
 
 <h1>@T("assignments.title")</h1>
@@ -72,6 +87,14 @@
 @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
 {
     <div class="alert alert-danger">@Model.ErrorMessage</div>
+}
+@if (!string.IsNullOrWhiteSpace(Model.LicenseValidationMessageKey))
+{
+    <div class="alert alert-danger">
+        @(string.IsNullOrWhiteSpace(Model.LicenseValidationMessageArgument)
+            ? T(Model.LicenseValidationMessageKey)
+            : F(Model.LicenseValidationMessageKey, Model.LicenseValidationMessageArgument))
+    </div>
 }
 
 <form method="post" id="assignmentForm">
@@ -308,6 +331,67 @@
                         }
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header p-0">
+            <button class="btn w-100 text-start d-flex justify-content-between align-items-center px-3 py-2"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#assignmentLicenses"
+                    aria-expanded="@(licenseSectionOpen ? "true" : "false")"
+                    aria-controls="assignmentLicenses">
+                <span><strong>@T("assignments.licenses")</strong> <span class="text-muted small">(@T("assignments.licensesOptional"))</span></span>
+                <span aria-hidden="true">&#9662;</span>
+            </button>
+        </div>
+        <div id="assignmentLicenses" class="collapse @(licenseSectionOpen ? "show" : "")">
+            <div class="card-body p-2">
+                <p class="text-muted small mb-2">@T("assignments.licensesHelp")</p>
+
+                @if (Model.LicenseProducts.Any())
+                {
+                    <div class="row g-2">
+                        @foreach (var license in Model.LicenseProducts)
+                        {
+                            <div class="col-xl-4 col-md-6">
+                                <div class="border rounded p-2 h-100">
+                                    <div class="form-check mb-0">
+                                        <input class="form-check-input assignment-license-checkbox"
+                                               type="checkbox"
+                                               name="SelectedLicenseIds"
+                                               value="@license.Id"
+                                               id="assignmentLicense_@license.Id"
+                                               checked="@Model.SelectedLicenseIds.Contains(license.Id)" />
+                                        <label class="form-check-label w-100" for="assignmentLicense_@license.Id">
+                                            <strong class="d-block">@license.Name</strong>
+                                            @if (!string.IsNullOrWhiteSpace(license.Description))
+                                            {
+                                                <span class="d-block text-muted small">@license.Description</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(license.LicenseLevel))
+                                            {
+                                                <span class="d-block text-muted small">@license.LicenseLevel</span>
+                                            }
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="mt-2">
+                        <label asp-for="LicenseBusinessReason" class="form-label mb-1">@T("assignments.licenseBusinessReason")</label>
+                        <textarea asp-for="LicenseBusinessReason" class="form-control" rows="2" maxlength="2000"></textarea>
+                        <div class="form-text">@T("assignments.licenseBusinessReasonHelp")</div>
+                    </div>
+                }
+                else
+                {
+                    <p class="text-muted mb-0">@T("assignments.noLicensesAvailable")</p>
+                }
             </div>
         </div>
     </div>

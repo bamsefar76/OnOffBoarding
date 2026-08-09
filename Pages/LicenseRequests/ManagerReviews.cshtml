@@ -34,6 +34,8 @@
         ["licenseStatus.completed"] = "Completed",
         ["licenseStatus.managerRejected"] = "Rejected by manager",
         ["licenseStatus.itRejected"] = "Rejected by IT",
+        ["licenseStatus.provisioning"] = "Provisioning",
+        ["licenseStatus.provisioningFailed"] = "Provisioning failed",
         ["licenseDecision.approved"] = "Approved",
         ["licenseDecision.rejected"] = "Rejected"
     };
@@ -54,6 +56,8 @@
         "Completed" => T("licenseStatus.completed"),
         "ManagerRejected" => T("licenseStatus.managerRejected"),
         "ITRejected" => T("licenseStatus.itRejected"),
+        "Provisioning" => T("licenseStatus.provisioning"),
+        "ProvisioningFailed" => T("licenseStatus.provisioningFailed"),
         _ => status
     };
 
@@ -70,7 +74,8 @@
         "AwaitingIT" => "manager-inbox-badge-primary",
         "Approved" or "Completed" => "manager-inbox-badge-success",
         "PartiallyApproved" => "manager-inbox-badge-info",
-        "ManagerRejected" or "ITRejected" => "manager-inbox-badge-danger",
+        "Provisioning" => "manager-inbox-badge-info",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "manager-inbox-badge-danger",
         _ => "manager-inbox-badge-secondary"
     };
 
@@ -80,7 +85,8 @@
         "AwaitingIT" => "manager-inbox-it",
         "Approved" or "Completed" => "manager-inbox-approved",
         "PartiallyApproved" => "manager-inbox-partial",
-        "ManagerRejected" or "ITRejected" => "manager-inbox-rejected",
+        "Provisioning" => "manager-inbox-partial",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "manager-inbox-rejected",
         _ => "manager-inbox-other"
     };
 
@@ -125,6 +131,8 @@
                         <option value="AwaitingIT">@T("licenseStatus.awaitingIT")</option>
                         <option value="Approved">@T("licenseStatus.approved")</option>
                         <option value="PartiallyApproved">@T("licenseStatus.partiallyApproved")</option>
+                        <option value="Provisioning">@T("licenseStatus.provisioning")</option>
+                        <option value="ProvisioningFailed">@T("licenseStatus.provisioningFailed")</option>
                         <option value="Completed">@T("licenseStatus.completed")</option>
                         <option value="ManagerRejected">@T("licenseStatus.managerRejected")</option>
                         <option value="ITRejected">@T("licenseStatus.itRejected")</option>

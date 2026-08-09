@@ -91,6 +91,65 @@ public sealed class ITReviewModel : PageModel
             DecisionReason);
     }
 
+    public async Task<IActionResult> OnPostRetryProvisioningAsync(long applicationId, long itemId)
+    {
+        NormalizeFilters();
+
+        await using var connection =
+            await _connections.OpenAsync(HttpContext.RequestAborted);
+
+        await using var transaction =
+            (SqlTransaction)await connection.BeginTransactionAsync(HttpContext.RequestAborted);
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = @"
+UPDATE dbo.LicenseApplicationItems
+SET ProvisioningStatus=N'Pending',
+    ProvisioningLockId=NULL,
+    ProvisioningLockedAt=NULL,
+    ProvisioningLastError=NULL
+WHERE LicenseApplicationItemId=@ItemId
+  AND LicenseApplicationId=@ApplicationId
+  AND FulfillmentType=N'AdGroup'
+  AND ProvisioningStatus=N'Failed';
+
+IF @@ROWCOUNT = 1
+BEGIN
+    UPDATE dbo.LicenseApplications
+    SET Status = CASE
+        WHEN EXISTS
+        (
+            SELECT 1 FROM dbo.LicenseApplicationItems
+            WHERE LicenseApplicationId=@ApplicationId
+              AND FulfillmentType=N'Manual'
+              AND Status=N'Pending'
+        ) THEN N'AwaitingIT'
+        ELSE N'Provisioning'
+    END
+    WHERE LicenseApplicationId=@ApplicationId;
+END;";
+            command.Parameters.AddBigInt("@ApplicationId", applicationId);
+            command.Parameters.AddBigInt("@ItemId", itemId);
+
+            var affected = await command.ExecuteNonQueryAsync(HttpContext.RequestAborted);
+            await transaction.CommitAsync(HttpContext.RequestAborted);
+
+            StatusMessageKey = affected > 0
+                ? "licenseReview.message.provisioningRetried"
+                : "licenseReview.message.provisioningRetryUnavailable";
+            StatusMessageArgument = itemId.ToString();
+            return RedirectToPage(GetRedirectValues(applicationId));
+        }
+        catch
+        {
+            await transaction.RollbackAsync(HttpContext.RequestAborted);
+            throw;
+        }
+    }
+
     public async Task<IActionResult> OnPostCompleteAsync(long applicationId)
     {
         NormalizeFilters();
@@ -121,14 +180,30 @@ SET
     ItDecisionAt = COALESCE(ItDecisionAt, SYSDATETIME()),
     ItDecisionBy = COALESCE(ItDecisionBy, @ChangedBy)
 WHERE LicenseApplicationId = @ApplicationId
-  AND Status = N'Approved';
+  AND FulfillmentType = N'Manual'
+  AND Status = N'Approved'
+  AND EXISTS
+  (
+      SELECT 1
+      FROM dbo.LicenseApplications
+      WHERE LicenseApplicationId = @ApplicationId
+        AND Status IN (N'Approved', N'PartiallyApproved')
+  );
 
 UPDATE dbo.LicenseApplications
 SET
     Status = N'Completed',
     CompletedAt = SYSDATETIME()
 WHERE LicenseApplicationId = @ApplicationId
-  AND Status IN (N'Approved', N'PartiallyApproved');";
+  AND Status IN (N'Approved', N'PartiallyApproved')
+  AND NOT EXISTS
+  (
+      SELECT 1
+      FROM dbo.LicenseApplicationItems
+      WHERE LicenseApplicationId = @ApplicationId
+        AND FulfillmentType = N'AdGroup'
+        AND ProvisioningStatus IN (N'Pending', N'Processing', N'Failed')
+  );";
             command.Parameters.AddBigInt("@ApplicationId", applicationId);
             command.Parameters.AddRequiredNVarChar(
                 "@ChangedBy",
@@ -136,6 +211,25 @@ WHERE LicenseApplicationId = @ApplicationId
                 300);
 
             await command.ExecuteNonQueryAsync(HttpContext.RequestAborted);
+
+            await using (var statusCommand = connection.CreateCommand())
+            {
+                statusCommand.Transaction = transaction;
+                statusCommand.CommandText = @"
+SELECT Status
+FROM dbo.LicenseApplications
+WHERE LicenseApplicationId=@ApplicationId;";
+                statusCommand.Parameters.AddBigInt("@ApplicationId", applicationId);
+                var completedStatus = Convert.ToString(
+                    await statusCommand.ExecuteScalarAsync(HttpContext.RequestAborted));
+                if (!string.Equals(completedStatus, "Completed", StringComparison.Ordinal))
+                {
+                    await transaction.RollbackAsync(HttpContext.RequestAborted);
+                    StatusMessageKey = "licenseReview.message.completionUnavailable";
+                    StatusMessageArgument = applicationId.ToString();
+                    return RedirectToPage(GetRedirectValues(applicationId));
+                }
+            }
 
             var licenseText = string.Join(
                 Environment.NewLine,
@@ -203,25 +297,59 @@ INNER JOIN dbo.LicenseApplications AS application
     ON application.LicenseApplicationId = item.LicenseApplicationId
 WHERE item.LicenseApplicationItemId = @ItemId
   AND item.LicenseApplicationId = @ApplicationId
+  AND item.FulfillmentType = N'Manual'
   AND item.Status = N'Pending'
   AND application.Status IN (N'AwaitingIT', N'PartiallyApproved');
 
 UPDATE dbo.LicenseApplications
-SET Status =
-(
-    SELECT CASE
-        WHEN SUM(CASE WHEN Status = N'Pending' THEN 1 ELSE 0 END) > 0
-            THEN N'AwaitingIT'
-        WHEN SUM(CASE WHEN Status = N'Approved' THEN 1 ELSE 0 END) > 0
-         AND SUM(CASE WHEN Status = N'Rejected' THEN 1 ELSE 0 END) > 0
-            THEN N'PartiallyApproved'
-        WHEN SUM(CASE WHEN Status = N'Approved' THEN 1 ELSE 0 END) > 0
-            THEN N'Approved'
-        ELSE N'ITRejected'
-    END
-    FROM dbo.LicenseApplicationItems
-    WHERE LicenseApplicationId = @ApplicationId
-)
+SET Status = CASE
+    WHEN EXISTS
+    (
+        SELECT 1 FROM dbo.LicenseApplicationItems
+        WHERE LicenseApplicationId=@ApplicationId
+          AND FulfillmentType=N'Manual' AND Status=N'Pending'
+    ) THEN N'AwaitingIT'
+    WHEN EXISTS
+    (
+        SELECT 1 FROM dbo.LicenseApplicationItems
+        WHERE LicenseApplicationId=@ApplicationId
+          AND FulfillmentType=N'AdGroup'
+          AND ProvisioningStatus IN (N'Pending', N'Processing')
+    ) THEN N'Provisioning'
+    WHEN EXISTS
+    (
+        SELECT 1 FROM dbo.LicenseApplicationItems
+        WHERE LicenseApplicationId=@ApplicationId
+          AND FulfillmentType=N'AdGroup'
+          AND ProvisioningStatus=N'Failed'
+    ) THEN N'ProvisioningFailed'
+    WHEN EXISTS
+    (
+        SELECT 1 FROM dbo.LicenseApplicationItems
+        WHERE LicenseApplicationId=@ApplicationId AND Status=N'Approved'
+    )
+     AND EXISTS
+    (
+        SELECT 1 FROM dbo.LicenseApplicationItems
+        WHERE LicenseApplicationId=@ApplicationId AND Status=N'Rejected'
+    ) THEN N'PartiallyApproved'
+    WHEN EXISTS
+    (
+        SELECT 1 FROM dbo.LicenseApplicationItems
+        WHERE LicenseApplicationId=@ApplicationId AND Status=N'Approved'
+    ) THEN N'Approved'
+    WHEN EXISTS
+    (
+        SELECT 1 FROM dbo.LicenseApplicationItems
+        WHERE LicenseApplicationId=@ApplicationId AND Status=N'Completed'
+    )
+     AND EXISTS
+    (
+        SELECT 1 FROM dbo.LicenseApplicationItems
+        WHERE LicenseApplicationId=@ApplicationId AND Status=N'Rejected'
+    ) THEN N'PartiallyApproved'
+    ELSE N'ITRejected'
+END
 WHERE LicenseApplicationId = @ApplicationId;";
             command.Parameters.AddRequiredNVarChar("@Decision", decision, 30);
             command.Parameters.AddNVarChar("@Reason", reason, 2000);
@@ -398,7 +526,11 @@ SELECT
     item.LicenseApplicationItemId,
     product.Name,
     item.Status,
-    item.ItReason
+    item.ItReason,
+    item.FulfillmentType,
+    item.AdGroupName,
+    item.ProvisioningStatus,
+    item.ProvisioningLastError
 FROM dbo.LicenseApplications AS application
 INNER JOIN dbo.LicenseApplicationItems AS item
     ON item.LicenseApplicationId = application.LicenseApplicationId
@@ -434,7 +566,11 @@ ORDER BY product.Name;";
                 Id = reader.GetInt64(10),
                 Name = Get(reader, 11),
                 Status = Get(reader, 12),
-                Reason = Get(reader, 13)
+                Reason = Get(reader, 13),
+                FulfillmentType = Get(reader, 14),
+                AdGroupName = Get(reader, 15),
+                ProvisioningStatus = Get(reader, 16),
+                ProvisioningLastError = Get(reader, 17)
             });
         }
 
@@ -494,5 +630,9 @@ ORDER BY product.Name;";
         public string Name { get; init; } = "";
         public string Status { get; init; } = "";
         public string Reason { get; init; } = "";
+        public string FulfillmentType { get; init; } = "Manual";
+        public string AdGroupName { get; init; } = "";
+        public string ProvisioningStatus { get; init; } = "";
+        public string ProvisioningLastError { get; init; } = "";
     }
 }

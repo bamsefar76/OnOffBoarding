@@ -53,6 +53,8 @@ public sealed class CreateModel : PageModel
     [BindProperty] public string? ComputerType { get; set; }
     [BindProperty] public bool AccessCard { get; set; }
     [BindProperty] public List<int> SelectedAccessCardGroupIds { get; set; } = new();
+    [BindProperty] public List<int> SelectedLicenseIds { get; set; } = new();
+    [BindProperty] public string? LicenseBusinessReason { get; set; }
     [BindProperty] public string? NewOU { get; set; }
     [BindProperty] public string? StreetAddress { get; set; }
     [BindProperty] public string? PostalCode { get; set; }
@@ -72,6 +74,9 @@ public sealed class CreateModel : PageModel
     public List<AccessCardGroupService.AccessCardGroupOption> AccessCardGroups { get; set; } = new();
     public List<OfficeLicenseRuleService.TitleOfficeLicenseRule> TitleOfficeLicenseRules { get; set; } = new();
     public List<ADGroupRuleService.RecommendedGroup> RecommendedGroups { get; set; } = new();
+    public List<AssignmentLicenseOption> LicenseProducts { get; } = new();
+    public string? LicenseValidationMessageKey { get; private set; }
+    public string? LicenseValidationMessageArgument { get; private set; }
 
     public async Task OnGetAsync()
     {
@@ -246,6 +251,54 @@ ORDER BY {column};";
         await LoadAccessCardGroupsAsync();
         RecommendedGroups = await _groupRuleService.GetRecommendedGroupsAsync(BuildGroupRuleContext());
         NormalizePostedValues();
+        SelectedLicenseIds = SelectedLicenseIds.Where(id => id > 0).Distinct().ToList();
+        LicenseBusinessReason = NullIfWhiteSpace(LicenseBusinessReason);
+
+        var selectedLicenses = LicenseProducts
+            .Where(product => SelectedLicenseIds.Contains(product.Id))
+            .ToList();
+        var licenseValidationFailed = false;
+        if (selectedLicenses.Count != SelectedLicenseIds.Count)
+        {
+            LicenseValidationMessageKey = "assignments.licenseValidationUnavailable";
+            licenseValidationFailed = true;
+        }
+        else if (selectedLicenses.Any(product =>
+                     string.Equals(product.FulfillmentType, "AdGroup", StringComparison.OrdinalIgnoreCase)
+                     && string.IsNullOrWhiteSpace(product.AdGroupName)))
+        {
+            LicenseValidationMessageKey = "assignments.licenseValidationAdGroupMissing";
+            licenseValidationFailed = true;
+        }
+        else
+        {
+            var duplicateFamily = selectedLicenses
+                .Where(product => !string.IsNullOrWhiteSpace(product.ProductFamily))
+                .GroupBy(product => product.ProductFamily!, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault(group => group.Count() > 1);
+            if (duplicateFamily is not null)
+            {
+                LicenseValidationMessageKey = "assignments.licenseValidationDuplicateFamily";
+                LicenseValidationMessageArgument = duplicateFamily.Key;
+                licenseValidationFailed = true;
+            }
+        }
+
+        if (SelectedLicenseIds.Count > 0 && string.IsNullOrWhiteSpace(ManagerSamAccountName))
+        {
+            LicenseValidationMessageKey = "assignments.licenseValidationManagerRequired";
+            licenseValidationFailed = true;
+        }
+        else if (SelectedLicenseIds.Count > 0 && string.IsNullOrWhiteSpace(LicenseBusinessReason))
+        {
+            LicenseValidationMessageKey = "assignments.licenseValidationReasonRequired";
+            licenseValidationFailed = true;
+        }
+        else if ((LicenseBusinessReason?.Length ?? 0) > 2000)
+        {
+            LicenseValidationMessageKey = "assignments.licenseValidationReasonTooLong";
+            licenseValidationFailed = true;
+        }
 
         if (!TryParseDate(StartDateText, required: true, out var startDate))
             ModelState.AddModelError(nameof(StartDateText), "Use dd.MM.yyyy.");
@@ -283,7 +336,7 @@ ORDER BY {column};";
             && !Titles.Contains(Title, StringComparer.OrdinalIgnoreCase))
             ModelState.AddModelError(nameof(Title), "Select a title from the database.");
 
-        if (!ModelState.IsValid) return Page();
+        if (!ModelState.IsValid || licenseValidationFailed) return Page();
 
         await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(HttpContext.RequestAborted);
         try
@@ -398,6 +451,41 @@ VALUES
             var recommendedGroups = await _groupRuleService.GetRecommendedGroupsAsync(cn, finalGroupContext, tx);
             await _groupRuleService.ReplaceRuleGeneratedQueueGroupsAsync(cn, requestId, recommendedGroups, changedBy, tx);
 
+            if (selectedLicenses.Count > 0)
+            {
+                foreach (var license in selectedLicenses)
+                {
+                    await using var licenseCommand = cn.CreateCommand();
+                    licenseCommand.Transaction = tx;
+                    licenseCommand.CommandText = @"
+INSERT INTO dbo.AssignmentLicenseSelections
+(
+    RequestId,
+    LicenseProductId,
+    BusinessReason,
+    FulfillmentType,
+    AdGroupName,
+    CreatedBy
+)
+VALUES
+(
+    @RequestId,
+    @LicenseProductId,
+    @BusinessReason,
+    @FulfillmentType,
+    @AdGroupName,
+    @CreatedBy
+);";
+                    licenseCommand.Parameters.AddBigInt("@RequestId", requestId);
+                    licenseCommand.Parameters.AddInt("@LicenseProductId", license.Id);
+                    licenseCommand.Parameters.AddRequiredNVarChar("@BusinessReason", LicenseBusinessReason!, 2000);
+                    licenseCommand.Parameters.AddRequiredNVarChar("@FulfillmentType", license.FulfillmentType, 20);
+                    licenseCommand.Parameters.AddNVarChar("@AdGroupName", license.AdGroupName, 300);
+                    licenseCommand.Parameters.AddRequiredNVarChar("@CreatedBy", changedBy, 300);
+                    await licenseCommand.ExecuteNonQueryAsync(HttpContext.RequestAborted);
+                }
+            }
+
             await tx.CommitAsync(HttpContext.RequestAborted);
             return RedirectToPage("/Requests/Approvals", new { requestId });
         }
@@ -417,6 +505,7 @@ VALUES
         EmployeeTypes.Clear();
         Titles.Clear();
         ComputerTypes.Clear();
+        LicenseProducts.Clear();
 
         await using var cn = await _connectionFactory.OpenAsync(HttpContext.RequestAborted);
         await using var cmd = cn.CreateCommand();
@@ -468,7 +557,19 @@ SELECT
     ISNULL([Domain], N'')
 FROM dbo.ComputerTypes
 WHERE IsActive = 1
-ORDER BY ComputerType;";
+ORDER BY ComputerType;
+
+SELECT
+    LicenseProductId,
+    Name,
+    ISNULL(Description, N''),
+    ISNULL(ProductFamily, N''),
+    ISNULL(CONVERT(nvarchar(20), LicenseLevel), N''),
+    ISNULL(FulfillmentType, N'Manual'),
+    ISNULL(AdGroupName, N'')
+FROM dbo.LicenseProducts
+WHERE Active = 1
+ORDER BY SortOrder, COALESCE(NULLIF(ProductFamily, N''), Name), LicenseLevel, Name;";
         cmd.Parameters.AddNVarChar("@SelectedDomain", SelectedDomain ?? string.Empty, 320);
 
         await using var reader = await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
@@ -496,6 +597,17 @@ ORDER BY ComputerType;";
         await reader.NextResultAsync(HttpContext.RequestAborted);
         while (await reader.ReadAsync(HttpContext.RequestAborted))
             ComputerTypes.Add(new ComputerTypeOption(reader.GetString(0), reader.GetString(1)));
+
+        await reader.NextResultAsync(HttpContext.RequestAborted);
+        while (await reader.ReadAsync(HttpContext.RequestAborted))
+            LicenseProducts.Add(new AssignmentLicenseOption(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5),
+                reader.GetString(6)));
 
         await reader.DisposeAsync();
         TitleOfficeLicenseRules = await _officeLicenseRuleService.LoadActiveTitleRulesAsync(cn);
@@ -708,6 +820,7 @@ while (await r.ReadAsync())
         Department = NullIfWhiteSpace(Department);
         Title = NullIfWhiteSpace(Title);
         EmployeeType = NullIfWhiteSpace(EmployeeType);
+        LicenseBusinessReason = NullIfWhiteSpace(LicenseBusinessReason);
     }
 
     private static bool TryParseDate(string? value, bool required, out DateTime? result)
@@ -730,6 +843,14 @@ while (await r.ReadAsync())
     public sealed record ManagerOption(string SamAccountName, string DisplayName);
     public sealed record EmployeeTypeOption(string Name, bool RequiresEndDate);
     public sealed record ComputerTypeOption(string ComputerType, string Domain);
+    public sealed record AssignmentLicenseOption(
+        int Id,
+        string Name,
+        string Description,
+        string ProductFamily,
+        string LicenseLevel,
+        string FulfillmentType,
+        string AdGroupName);
     private sealed record EmployeeDetails(string GivenName, string Surname, string? PrivateEmail, string? MobilePhone, string? UserPrincipalName, Guid? ObjectGuid, string? SamAccountName)
     {
         public string DisplayName => $"{GivenName} {Surname}".Trim();

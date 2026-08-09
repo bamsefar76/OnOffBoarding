@@ -26,7 +26,7 @@ public sealed class LicenseProductsModel : PageModel
     public bool ShowInactive { get; set; }
 
     [BindProperty]
-    public EditModel Edit { get; set; } = new() { Active = true, SortOrder = 100 };
+    public EditModel Edit { get; set; } = new() { Active = true, SortOrder = 100, FulfillmentType = "Manual" };
 
     [TempData]
     public string? StatusMessageKey { get; set; }
@@ -45,7 +45,7 @@ public sealed class LicenseProductsModel : PageModel
     public async Task<IActionResult> OnGetNewAsync()
     {
         SelectedId = null;
-        Edit = new EditModel { Active = true, SortOrder = 100 };
+        Edit = new EditModel { Active = true, SortOrder = 100, FulfillmentType = "Manual" };
         await LoadPageAsync(loadSelected: false);
         return Page();
     }
@@ -78,6 +78,8 @@ SET
     Description = @Description,
     ProductFamily = @ProductFamily,
     LicenseLevel = @LicenseLevel,
+    FulfillmentType = @FulfillmentType,
+    AdGroupName = @AdGroupName,
     Active = @Active,
     SortOrder = @SortOrder,
     UpdatedAt = SYSDATETIME()
@@ -105,6 +107,8 @@ INSERT INTO dbo.LicenseProducts
     Description,
     ProductFamily,
     LicenseLevel,
+    FulfillmentType,
+    AdGroupName,
     Active,
     SortOrder,
     CreatedAt,
@@ -117,6 +121,8 @@ VALUES
     @Description,
     @ProductFamily,
     @LicenseLevel,
+    @FulfillmentType,
+    @AdGroupName,
     @Active,
     @SortOrder,
     SYSDATETIME(),
@@ -184,6 +190,8 @@ SELECT
     Description,
     ProductFamily,
     LicenseLevel,
+    FulfillmentType,
+    AdGroupName,
     Active,
     SortOrder,
     CreatedAt,
@@ -196,6 +204,7 @@ WHERE (@ShowInactive = 1 OR Active = 1)
       OR Name LIKE N'%' + @Search + N'%'
       OR Description LIKE N'%' + @Search + N'%'
       OR ProductFamily LIKE N'%' + @Search + N'%'
+      OR AdGroupName LIKE N'%' + @Search + N'%'
   )
 ORDER BY SortOrder, COALESCE(ProductFamily, Name), LicenseLevel, Name;";
 
@@ -211,10 +220,12 @@ ORDER BY SortOrder, COALESCE(ProductFamily, Name), LicenseLevel, Name;";
                     Description = GetString(reader, 2),
                     ProductFamily = GetString(reader, 3),
                     LicenseLevel = reader.IsDBNull(4) ? null : reader.GetInt32(4),
-                    Active = reader.GetBoolean(5),
-                    SortOrder = reader.GetInt32(6),
-                    CreatedAt = reader.GetDateTime(7),
-                    UpdatedAt = reader.GetDateTime(8)
+                    FulfillmentType = GetString(reader, 5),
+                    AdGroupName = GetString(reader, 6),
+                    Active = reader.GetBoolean(7),
+                    SortOrder = reader.GetInt32(8),
+                    CreatedAt = reader.GetDateTime(9),
+                    UpdatedAt = reader.GetDateTime(10)
                 });
             }
         }
@@ -230,6 +241,8 @@ SELECT
     Description,
     ProductFamily,
     LicenseLevel,
+    FulfillmentType,
+    AdGroupName,
     Active,
     SortOrder
 FROM dbo.LicenseProducts
@@ -247,8 +260,10 @@ WHERE LicenseProductId = @Id;";
                     Description = GetString(reader, 2),
                     ProductFamily = GetString(reader, 3),
                     LicenseLevel = reader.IsDBNull(4) ? null : reader.GetInt32(4),
-                    Active = reader.GetBoolean(5),
-                    SortOrder = reader.GetInt32(6)
+                    FulfillmentType = GetString(reader, 5),
+                    AdGroupName = GetString(reader, 6),
+                    Active = reader.GetBoolean(7),
+                    SortOrder = reader.GetInt32(8)
                 };
             }
         }
@@ -268,6 +283,15 @@ WHERE LicenseProductId = @Id;";
         if (model.ProductFamily?.Length > 100)
             return "licenseProducts.validation.familyTooLong";
 
+        if (model.FulfillmentType is not ("Manual" or "AdGroup"))
+            return "licenseProducts.validation.fulfillmentInvalid";
+
+        if (model.FulfillmentType == "AdGroup" && string.IsNullOrWhiteSpace(model.AdGroupName))
+            return "licenseProducts.validation.adGroupRequired";
+
+        if (model.AdGroupName?.Length > 300)
+            return "licenseProducts.validation.adGroupTooLong";
+
         return null;
     }
 
@@ -276,6 +300,15 @@ WHERE LicenseProductId = @Id;";
         model.Name = model.Name?.Trim() ?? "";
         model.Description = NullIfWhiteSpace(model.Description);
         model.ProductFamily = NullIfWhiteSpace(model.ProductFamily);
+        var fulfillmentType = model.FulfillmentType?.Trim() ?? "";
+        model.FulfillmentType = string.Equals(fulfillmentType, "AdGroup", StringComparison.OrdinalIgnoreCase)
+            ? "AdGroup"
+            : string.Equals(fulfillmentType, "Manual", StringComparison.OrdinalIgnoreCase)
+                ? "Manual"
+                : fulfillmentType;
+        model.AdGroupName = model.FulfillmentType == "AdGroup"
+            ? NullIfWhiteSpace(model.AdGroupName)
+            : null;
     }
 
     private static void AddParameters(SqlCommand cmd, EditModel model)
@@ -284,6 +317,8 @@ WHERE LicenseProductId = @Id;";
         cmd.Parameters.AddNVarChar("@Description", model.Description, 1000);
         cmd.Parameters.AddNVarChar("@ProductFamily", model.ProductFamily, 100);
         cmd.Parameters.AddNullableInt("@LicenseLevel", model.LicenseLevel);
+        cmd.Parameters.AddRequiredNVarChar("@FulfillmentType", model.FulfillmentType, 20);
+        cmd.Parameters.AddNVarChar("@AdGroupName", model.AdGroupName, 300);
         cmd.Parameters.AddBit("@Active", model.Active);
         cmd.Parameters.AddInt("@SortOrder", model.SortOrder);
     }
@@ -301,6 +336,8 @@ WHERE LicenseProductId = @Id;";
         public string? Description { get; set; }
         public string? ProductFamily { get; set; }
         public int? LicenseLevel { get; set; }
+        public string FulfillmentType { get; set; } = "Manual";
+        public string? AdGroupName { get; set; }
         public bool Active { get; set; } = true;
         public int SortOrder { get; set; } = 100;
     }
@@ -312,6 +349,8 @@ WHERE LicenseProductId = @Id;";
         public string Description { get; init; } = "";
         public string ProductFamily { get; init; } = "";
         public int? LicenseLevel { get; init; }
+        public string FulfillmentType { get; init; } = "Manual";
+        public string AdGroupName { get; init; } = "";
         public bool Active { get; init; }
         public int SortOrder { get; init; }
         public DateTime CreatedAt { get; init; }
