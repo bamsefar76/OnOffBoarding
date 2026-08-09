@@ -38,6 +38,7 @@
         ["nav.selfService"] = "Self Service",
         ["nav.temporaryAccess"] = "Temporary access",
         ["nav.licenseRequests"] = "License requests",
+        ["nav.licenseManagerReviews"] = "License approvals",
         ["nav.licenseReviewIT"] = "License review (IT)",
         ["nav.licenseProducts"] = "License products",
         ["nav.temporaryAccessGroups"] = "Temporary access groups",
@@ -86,6 +87,8 @@
     var canOpenProjects = canOpenProjectList || canOpenProjectImport;
     var canOpenTemporaryAccess = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/TemporaryAccess");
     var canOpenLicenseRequests = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/LicenseRequests/Index");
+    var canOpenManagerLicenseReviews = isAuthenticated &&
+        await PageAccessService.UserHasAccessAsync(currentUserName, "/LicenseRequests/ManagerReviews");
     var canOpenLicenseReview = isAuthenticated &&
         await PageAccessService.UserHasAccessAsync(currentUserName, "/LicenseRequests/ITReview");
     var canOpenSelfService = canOpenTemporaryAccess || canOpenLicenseRequests;
@@ -99,7 +102,7 @@
     var canOpenTemporaryAccessGroups = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/TemporaryAccessGroups");
     var canOpenLicenseProducts = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/LicenseProducts");
 
-    var canOpenRequests = canOpenUserChangeQueue || canOpenUpdateUser || canOpenAddAssignment || canOpenSupervisor || canOpenApprovals || canOpenUpcomingChanges || canOpenLicenseReview;
+    var canOpenRequests = canOpenUserChangeQueue || canOpenUpdateUser || canOpenAddAssignment || canOpenSupervisor || canOpenApprovals || canOpenUpcomingChanges || canOpenManagerLicenseReviews || canOpenLicenseReview;
     var canOpenReports = canOpenSnapshot;
     var canOpenSettings = canOpenGroupRules || canOpenTranslations || canOpenDomains || canOpenEmailTemplates || canOpenPageAccessRules || canOpenAccessCardGroups || canOpenTemporaryAccessGroups || canOpenLicenseProducts;
 
@@ -191,7 +194,7 @@
                         @if (canOpenRequests)
                         {
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/Requests/NewUser", "/Requests/UpdateUser", "/Assignments/Create", "/Assignments/Submitted", "/Requests/Supervisor", "/Requests/Approvals", "/Requests/Upcoming", "/Requests/UserPendingChanges", "/LicenseRequests/ITReview"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/Requests/NewUser", "/Requests/UpdateUser", "/Assignments/Create", "/Assignments/Submitted", "/Requests/Supervisor", "/Requests/Approvals", "/Requests/Upcoming", "/Requests/UserPendingChanges", "/LicenseRequests/ManagerReviews", "/LicenseRequests/ManagerReview", "/LicenseRequests/ITReview"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                     @T("nav.requests")
                                 </a>
                                 <ul class="dropdown-menu">
@@ -220,9 +223,17 @@
                                         <li><hr class="dropdown-divider" /></li>
                                         <li><a class="dropdown-item@(ActiveClass("/Requests/Supervisor"))" asp-area="" asp-page="/Requests/Supervisor">@T("nav.supervisor")</a></li>
                                     }
-                                    @if (canOpenLicenseReview)
+                                    @if (canOpenManagerLicenseReviews)
                                     {
                                         <li><hr class="dropdown-divider" /></li>
+                                        <li><a class="dropdown-item@(ActiveClass("/LicenseRequests/ManagerReviews") + ActiveClass("/LicenseRequests/ManagerReview"))" asp-area="" asp-page="/LicenseRequests/ManagerReviews">@T("nav.licenseManagerReviews")</a></li>
+                                    }
+                                    @if (canOpenLicenseReview)
+                                    {
+                                        @if (!canOpenManagerLicenseReviews)
+                                        {
+                                            <li><hr class="dropdown-divider" /></li>
+                                        }
                                         <li><a class="dropdown-item@(ActiveClass("/LicenseRequests/ITReview"))" asp-area="" asp-page="/LicenseRequests/ITReview">@T("nav.licenseReviewIT")</a></li>
                                     }
                                 </ul>

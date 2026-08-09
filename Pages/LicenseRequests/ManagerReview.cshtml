@@ -1,4 +1,4 @@
-@page
+﻿@page
 @model UserChangeQueueWeb.Pages.LicenseRequests.ManagerReviewModel
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
@@ -19,6 +19,7 @@
         ["managerLicenseReview.decisionReason"] = "Decision reason",
         ["managerLicenseReview.decisionReasonHelp"] = "A reason is required for both approval and rejection.",
         ["managerLicenseReview.approve"] = "Approve and send to IT",
+        ["managerLicenseReview.backToReviews"] = "Back to my license approvals",
         ["managerLicenseReview.reject"] = "Reject",
         ["managerLicenseReview.message.approved"] = "Approved and sent to IT.",
         ["managerLicenseReview.message.rejected"] = "Application rejected.",
@@ -96,9 +97,14 @@
     };
 }
 
-<div class="mb-4">
-    <h1 class="h2 mb-1">@T("managerLicenseReview.title")</h1>
-    <p class="text-body-secondary mb-0">@T("managerLicenseReview.help")</p>
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <h1 class="h2 mb-1">@T("managerLicenseReview.title")</h1>
+        <p class="text-body-secondary mb-0">@T("managerLicenseReview.help")</p>
+    </div>
+    <a asp-page="/LicenseRequests/ManagerReviews" class="btn btn-outline-secondary">
+        @T("managerLicenseReview.backToReviews")
+    </a>
 </div>
 
 @if (!string.IsNullOrWhiteSpace(statusMessage))

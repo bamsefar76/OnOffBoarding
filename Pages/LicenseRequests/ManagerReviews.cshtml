@@ -1,0 +1,409 @@
+@page
+@model UserChangeQueueWeb.Pages.LicenseRequests.ManagerReviewsModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.all"] = "All",
+        ["common.clear"] = "Clear",
+        ["common.filter"] = "Filter",
+        ["common.next"] = "Next",
+        ["common.previous"] = "Previous",
+        ["common.status"] = "Status",
+        ["common.notProvided"] = "Not provided",
+        ["managerLicenseReviews.title"] = "License approvals",
+        ["managerLicenseReviews.help"] = "License requests sent to you for manager review.",
+        ["managerLicenseReviews.pendingCount"] = "{0} awaiting your review",
+        ["managerLicenseReviews.searchLabel"] = "Search",
+        ["managerLicenseReviews.searchPlaceholder"] = "Requester, email, license or business reason",
+        ["managerLicenseReviews.noReviews"] = "No license reviews match the current filters.",
+        ["managerLicenseReviews.requestCount"] = "{0} reviews",
+        ["managerLicenseReviews.resultCount"] = "Showing {0}-{1} of {2}",
+        ["managerLicenseReviews.page"] = "Page {0} of {1}",
+        ["managerLicenseReviews.applicationNumber"] = "Application #{0}",
+        ["managerLicenseReviews.licenses"] = "Licenses",
+        ["managerLicenseReviews.businessReason"] = "Business reason",
+        ["managerLicenseReviews.submitted"] = "Submitted",
+        ["managerLicenseReviews.decision"] = "Your decision",
+        ["managerLicenseReviews.openReview"] = "Open review",
+        ["licenseStatus.awaitingManager"] = "Awaiting manager",
+        ["licenseStatus.awaitingIT"] = "Awaiting IT",
+        ["licenseStatus.approved"] = "Approved",
+        ["licenseStatus.partiallyApproved"] = "Partially approved",
+        ["licenseStatus.completed"] = "Completed",
+        ["licenseStatus.managerRejected"] = "Rejected by manager",
+        ["licenseStatus.itRejected"] = "Rejected by IT",
+        ["licenseDecision.approved"] = "Approved",
+        ["licenseDecision.rejected"] = "Rejected"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    ViewData["Title"] = uiText.T("managerLicenseReviews.title", textFallbacks["managerLicenseReviews.title"]);
+
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    string F(string key, params object[] args) =>
+        string.Format(uiText.T(key, textFallbacks[key]), args);
+
+    string StatusText(string status) => status switch
+    {
+        "AwaitingManager" => T("licenseStatus.awaitingManager"),
+        "AwaitingIT" => T("licenseStatus.awaitingIT"),
+        "Approved" => T("licenseStatus.approved"),
+        "PartiallyApproved" => T("licenseStatus.partiallyApproved"),
+        "Completed" => T("licenseStatus.completed"),
+        "ManagerRejected" => T("licenseStatus.managerRejected"),
+        "ITRejected" => T("licenseStatus.itRejected"),
+        _ => status
+    };
+
+    string DecisionText(string decision) => decision switch
+    {
+        "Approved" => T("licenseDecision.approved"),
+        "Rejected" => T("licenseDecision.rejected"),
+        _ => decision
+    };
+
+    string StatusBadgeClass(string status) => status switch
+    {
+        "AwaitingManager" => "manager-inbox-badge-warning",
+        "AwaitingIT" => "manager-inbox-badge-primary",
+        "Approved" or "Completed" => "manager-inbox-badge-success",
+        "PartiallyApproved" => "manager-inbox-badge-info",
+        "ManagerRejected" or "ITRejected" => "manager-inbox-badge-danger",
+        _ => "manager-inbox-badge-secondary"
+    };
+
+    string StatusStripeClass(string status) => status switch
+    {
+        "AwaitingManager" => "manager-inbox-awaiting",
+        "AwaitingIT" => "manager-inbox-it",
+        "Approved" or "Completed" => "manager-inbox-approved",
+        "PartiallyApproved" => "manager-inbox-partial",
+        "ManagerRejected" or "ITRejected" => "manager-inbox-rejected",
+        _ => "manager-inbox-other"
+    };
+
+    var firstResult = Model.TotalCount == 0
+        ? 0
+        : ((Model.PageNumber - 1) * Model.PageSizeValue) + 1;
+    var lastResult = Math.Min(Model.TotalCount, Model.PageNumber * Model.PageSizeValue);
+    var pageStart = Math.Max(1, Model.PageNumber - 2);
+    var pageEnd = Math.Min(Model.TotalPages, Model.PageNumber + 2);
+}
+
+<div class="manager-license-inbox">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <h1 class="h2 mb-1">@T("managerLicenseReviews.title")</h1>
+            <p class="manager-inbox-muted mb-0">@T("managerLicenseReviews.help")</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <span class="badge manager-inbox-badge manager-inbox-badge-warning fs-6">
+                @F("managerLicenseReviews.pendingCount", Model.PendingCount)
+            </span>
+            <span class="badge manager-inbox-badge manager-inbox-badge-secondary fs-6">
+                @F("managerLicenseReviews.requestCount", Model.TotalCount)
+            </span>
+        </div>
+    </div>
+
+    <form method="get" class="card manager-inbox-card mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-7 col-xl-6">
+                    <label asp-for="Search" class="form-label">@T("managerLicenseReviews.searchLabel")</label>
+                    <input asp-for="Search"
+                           class="form-control"
+                           placeholder="@T("managerLicenseReviews.searchPlaceholder")" />
+                </div>
+                <div class="col-md-5 col-xl-3">
+                    <label asp-for="StatusFilter" class="form-label">@T("common.status")</label>
+                    <select asp-for="StatusFilter" class="form-select">
+                        <option value="">@T("common.all")</option>
+                        <option value="AwaitingManager">@T("licenseStatus.awaitingManager")</option>
+                        <option value="AwaitingIT">@T("licenseStatus.awaitingIT")</option>
+                        <option value="Approved">@T("licenseStatus.approved")</option>
+                        <option value="PartiallyApproved">@T("licenseStatus.partiallyApproved")</option>
+                        <option value="Completed">@T("licenseStatus.completed")</option>
+                        <option value="ManagerRejected">@T("licenseStatus.managerRejected")</option>
+                        <option value="ITRejected">@T("licenseStatus.itRejected")</option>
+                    </select>
+                </div>
+                <div class="col-xl-3 d-flex gap-2">
+                    <button type="submit" class="btn btn-secondary">@T("common.filter")</button>
+                    <a asp-page="/LicenseRequests/ManagerReviews" class="btn btn-outline-secondary">@T("common.clear")</a>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    @if (Model.Applications.Count == 0)
+    {
+        <div class="alert alert-secondary" role="alert">@T("managerLicenseReviews.noReviews")</div>
+    }
+    else
+    {
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 manager-inbox-muted small">
+            <span>@F("managerLicenseReviews.resultCount", firstResult, lastResult, Model.TotalCount)</span>
+            <span>@F("managerLicenseReviews.page", Model.PageNumber, Model.TotalPages)</span>
+        </div>
+
+        <div class="vstack gap-3">
+            @foreach (var application in Model.Applications)
+            {
+                var badgeClass = StatusBadgeClass(application.Status);
+                var stripeClass = StatusStripeClass(application.Status);
+
+                <article class="card manager-inbox-card manager-inbox-entry @stripeClass">
+                    <div class="card-body p-3 p-lg-4">
+                        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3">
+                            <div class="min-w-0">
+                                <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                                    <a asp-page="/LicenseRequests/ManagerReview"
+                                       asp-route-id="@application.Id"
+                                       class="h5 mb-0 text-decoration-none manager-inbox-link text-break">
+                                        @application.UserName
+                                    </a>
+                                    <span class="badge manager-inbox-badge @badgeClass">@StatusText(application.Status)</span>
+                                </div>
+                                <div class="manager-inbox-muted small d-flex flex-wrap gap-3">
+                                    <span>@F("managerLicenseReviews.applicationNumber", application.Id)</span>
+                                    <span class="text-break">@application.UserEmail</span>
+                                </div>
+                            </div>
+
+                            <a asp-page="/LicenseRequests/ManagerReview"
+                               asp-route-id="@application.Id"
+                               class="btn btn-sm @(application.Status == "AwaitingManager" ? "btn-primary" : "btn-outline-primary") align-self-start flex-shrink-0">
+                                @T("managerLicenseReviews.openReview")
+                            </a>
+                        </div>
+
+                        <hr class="my-3" />
+
+                        <div class="row g-3">
+                            <div class="col-md-6 col-xl-4">
+                                <div class="manager-inbox-label">@T("managerLicenseReviews.licenses")</div>
+                                <div>@application.LicenseNames</div>
+                            </div>
+                            <div class="col-md-6 col-xl-3">
+                                <div class="manager-inbox-label">@T("managerLicenseReviews.submitted")</div>
+                                <div>@application.SubmittedAt.ToString("dd.MM.yyyy HH:mm")</div>
+                            </div>
+                            <div class="col-xl-5">
+                                <div class="manager-inbox-label">@T("managerLicenseReviews.businessReason")</div>
+                                <div class="manager-inbox-reason">@application.BusinessReason</div>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(application.ManagerDecision))
+                            {
+                                <div class="col-12">
+                                    <div class="manager-inbox-label">@T("managerLicenseReviews.decision")</div>
+                                    <div>
+                                        <span class="fw-semibold">@DecisionText(application.ManagerDecision)</span>
+                                        @if (!string.IsNullOrWhiteSpace(application.ManagerReason))
+                                        {
+                                            <span class="manager-inbox-muted"> - @application.ManagerReason</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+
+        @if (Model.TotalPages > 1)
+        {
+            <nav class="mt-4" aria-label="@T("managerLicenseReviews.title")">
+                <ul class="pagination flex-wrap">
+                    <li class="page-item @(Model.PageNumber <= 1 ? "disabled" : "")">
+                        <a class="page-link"
+                           asp-page="/LicenseRequests/ManagerReviews"
+                           asp-route-Search="@Model.Search"
+                           asp-route-StatusFilter="@Model.StatusFilter"
+                           asp-route-PageNumber="@(Model.PageNumber - 1)">@T("common.previous")</a>
+                    </li>
+                    @for (var pageNumber = pageStart; pageNumber <= pageEnd; pageNumber++)
+                    {
+                        <li class="page-item @(pageNumber == Model.PageNumber ? "active" : "")">
+                            <a class="page-link"
+                               asp-page="/LicenseRequests/ManagerReviews"
+                               asp-route-Search="@Model.Search"
+                               asp-route-StatusFilter="@Model.StatusFilter"
+                               asp-route-PageNumber="@(pageNumber)">@(pageNumber)</a>
+                        </li>
+                    }
+                    <li class="page-item @(Model.PageNumber >= Model.TotalPages ? "disabled" : "")">
+                        <a class="page-link"
+                           asp-page="/LicenseRequests/ManagerReviews"
+                           asp-route-Search="@Model.Search"
+                           asp-route-StatusFilter="@Model.StatusFilter"
+                           asp-route-PageNumber="@(Model.PageNumber + 1)">@T("common.next")</a>
+                    </li>
+                </ul>
+            </nav>
+        }
+    }
+</div>
+
+<style>
+    .manager-license-inbox {
+        --manager-inbox-surface: #ffffff;
+        --manager-inbox-surface-alt: #f3f5f7;
+        --manager-inbox-text: #212529;
+        --manager-inbox-muted: #5b6470;
+        --manager-inbox-border: #cbd1d8;
+        --manager-inbox-input-bg: #ffffff;
+        --manager-inbox-input-text: #212529;
+        color: var(--manager-inbox-text);
+    }
+
+    [data-bs-theme="dark"] .manager-license-inbox {
+        --manager-inbox-surface: #1a232c;
+        --manager-inbox-surface-alt: #222d37;
+        --manager-inbox-text: #e8edf2;
+        --manager-inbox-muted: #bdc7d1;
+        --manager-inbox-border: #526170;
+        --manager-inbox-input-bg: #111820;
+        --manager-inbox-input-text: #e8edf2;
+    }
+
+    .manager-license-inbox h1,
+    .manager-license-inbox h2,
+    .manager-license-inbox .form-label,
+    .manager-license-inbox .fw-semibold {
+        color: var(--manager-inbox-text) !important;
+    }
+
+    .manager-inbox-card,
+    .manager-inbox-card .card-body {
+        background-color: var(--manager-inbox-surface) !important;
+        color: var(--manager-inbox-text) !important;
+        border-color: var(--manager-inbox-border) !important;
+    }
+
+    .manager-license-inbox .form-control,
+    .manager-license-inbox .form-select {
+        background-color: var(--manager-inbox-input-bg) !important;
+        color: var(--manager-inbox-input-text) !important;
+        border-color: var(--manager-inbox-border) !important;
+    }
+
+    .manager-license-inbox .form-control::placeholder,
+    .manager-inbox-muted,
+    .manager-inbox-label {
+        color: var(--manager-inbox-muted) !important;
+    }
+
+    .manager-license-inbox .form-select option {
+        background-color: var(--manager-inbox-input-bg);
+        color: var(--manager-inbox-input-text);
+    }
+
+    .manager-inbox-entry {
+        border-inline-start: .35rem solid #6c757d !important;
+    }
+
+    .manager-inbox-awaiting { border-inline-start-color: #ffc107 !important; }
+    .manager-inbox-it { border-inline-start-color: #0d6efd !important; }
+    .manager-inbox-approved { border-inline-start-color: #198754 !important; }
+    .manager-inbox-partial { border-inline-start-color: #0dcaf0 !important; }
+    .manager-inbox-rejected { border-inline-start-color: #dc3545 !important; }
+
+    .manager-inbox-label {
+        font-size: .75rem;
+        font-weight: 700;
+        letter-spacing: .035em;
+        margin-bottom: .25rem;
+        text-transform: uppercase;
+    }
+
+    .manager-inbox-reason {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
+    .manager-inbox-link {
+        color: var(--app-link-color) !important;
+    }
+
+    .manager-inbox-badge {
+        border: 1px solid transparent;
+        font-weight: 600;
+    }
+
+    .manager-inbox-badge-primary {
+        color: #084298 !important;
+        background-color: #cfe2ff !important;
+        border-color: #9ec5fe !important;
+    }
+
+    .manager-inbox-badge-secondary {
+        color: #41464b !important;
+        background-color: #e2e3e5 !important;
+        border-color: #c4c8cb !important;
+    }
+
+    .manager-inbox-badge-success {
+        color: #0f5132 !important;
+        background-color: #d1e7dd !important;
+        border-color: #a3cfbb !important;
+    }
+
+    .manager-inbox-badge-info {
+        color: #055160 !important;
+        background-color: #cff4fc !important;
+        border-color: #9eeaf9 !important;
+    }
+
+    .manager-inbox-badge-warning {
+        color: #664d03 !important;
+        background-color: #fff3cd !important;
+        border-color: #ffecb5 !important;
+    }
+
+    .manager-inbox-badge-danger {
+        color: #842029 !important;
+        background-color: #f8d7da !important;
+        border-color: #f1aeb5 !important;
+    }
+
+    [data-bs-theme="dark"] .manager-inbox-badge-primary {
+        color: #d6e8ff !important;
+        background-color: #153a63 !important;
+        border-color: #3f78b5 !important;
+    }
+
+    [data-bs-theme="dark"] .manager-inbox-badge-secondary {
+        color: #edf1f5 !important;
+        background-color: #3a4652 !important;
+        border-color: #6b7b8b !important;
+    }
+
+    [data-bs-theme="dark"] .manager-inbox-badge-success {
+        color: #d7f5e7 !important;
+        background-color: #174c36 !important;
+        border-color: #3e8a69 !important;
+    }
+
+    [data-bs-theme="dark"] .manager-inbox-badge-info {
+        color: #d7f6fc !important;
+        background-color: #165362 !important;
+        border-color: #3990a5 !important;
+    }
+
+    [data-bs-theme="dark"] .manager-inbox-badge-warning {
+        color: #fff1c2 !important;
+        background-color: #5d4712 !important;
+        border-color: #a9872e !important;
+    }
+
+    [data-bs-theme="dark"] .manager-inbox-badge-danger {
+        color: #ffdadd !important;
+        background-color: #65272d !important;
+        border-color: #a94d56 !important;
+    }
+</style>
