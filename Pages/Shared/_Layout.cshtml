@@ -80,7 +80,9 @@
     var canOpenProjects = canOpenProjectList || canOpenProjectImport;
     var canOpenTemporaryAccess = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/TemporaryAccess");
     var canOpenLicenseRequests = isAuthenticated;
-    var canOpenLicenseReview = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/LicenseRequests/ITReview");
+    var canOpenLicenseReview = isAuthenticated &&
+        (await PageAccessService.UserHasAccessAsync(currentUserName, "/LicenseRequests/ITReview")
+         || accessScope.IsIT);
     var canOpenSelfService = canOpenTemporaryAccess || canOpenLicenseRequests;
 
     var canOpenGroupRules = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/GroupRules");

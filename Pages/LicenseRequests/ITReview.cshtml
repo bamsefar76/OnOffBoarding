@@ -1,11 +1,18 @@
-@page
+﻿@page
 @model UserChangeQueueWeb.Pages.LicenseRequests.ITReviewModel
-@{ ViewData["Title"] = "License review"; }
+@{
+    ViewData["Title"] = "License review";
+}
 
-<h1 class="h2 mb-1">License review</h1>
-<p class="text-body-secondary mb-4">
-    Review manager-approved applications and record manual IT decisions.
-</p>
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <h1 class="h2 mb-1">License review</h1>
+        <p class="text-body-secondary mb-0">
+            All license applications, including requests still waiting for manager approval.
+        </p>
+    </div>
+    <span class="badge text-bg-secondary fs-6">@Model.Applications.Count requests</span>
+</div>
 
 @if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
 {
@@ -14,51 +21,98 @@
 
 @if (Model.Applications.Count == 0)
 {
-    <div class="alert alert-success">No applications need IT review.</div>
+    <div class="alert alert-secondary">No license applications found.</div>
 }
 else
 {
-    <div class="vstack gap-4">
+    <div class="license-review-list border rounded overflow-hidden">
         @foreach (var application in Model.Applications)
         {
-            <article class="card">
-                <div class="card-header d-flex justify-content-between gap-2">
-                    <strong>Application #@application.Id · @application.UserName</strong>
-                    <span class="badge text-bg-secondary">@application.Status</span>
-                </div>
-                <div class="card-body">
-                    <dl class="row">
-                        <dt class="col-sm-3">Requester</dt>
-                        <dd class="col-sm-9">@application.UserName (@application.UserEmail)</dd>
-                        <dt class="col-sm-3">Manager</dt>
-                        <dd class="col-sm-9">@application.ManagerName</dd>
-                        <dt class="col-sm-3">Business reason</dt>
-                        <dd class="col-sm-9">@application.BusinessReason</dd>
-                        <dt class="col-sm-3">Manager reason</dt>
-                        <dd class="col-sm-9">@application.ManagerReason</dd>
-                    </dl>
+            var collapseId = $"license-request-{application.Id}";
+            var licenseNames = string.Join(", ", application.Items.Select(x => x.Name));
+            var statusClass = application.Status switch
+            {
+                "AwaitingManager" => "text-bg-warning",
+                "AwaitingIT" => "text-bg-primary",
+                "Approved" => "text-bg-success",
+                "PartiallyApproved" => "text-bg-info",
+                "Completed" => "text-bg-success",
+                "ManagerRejected" or "ITRejected" => "text-bg-danger",
+                _ => "text-bg-secondary"
+            };
 
-                    <div class="table-responsive">
-                        <table class="table align-middle">
-                            <thead>
-                                <tr>
-                                    <th>License</th>
-                                    <th>Status</th>
-                                    <th>Reason</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
+            <div class="license-review-entry border-bottom">
+                <button class="license-review-summary w-100 border-0 text-start"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#@collapseId"
+                        aria-expanded="false"
+                        aria-controls="@collapseId">
+                    <span class="license-review-id">#@application.Id</span>
+                    <span class="license-review-person text-truncate">@application.UserName</span>
+                    <span class="license-review-licenses text-truncate" title="@licenseNames">@licenseNames</span>
+                    <span class="license-review-date">@application.SubmittedAt.ToString("dd.MM.yyyy")</span>
+                    <span class="badge @statusClass license-review-status">@application.Status</span>
+                    <span class="license-review-chevron" aria-hidden="true">⌄</span>
+                </button>
+
+                <div class="collapse" id="@collapseId">
+                    <div class="license-review-details border-top p-3 p-lg-4">
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6 col-xl-3">
+                                <div class="detail-label">Requester</div>
+                                <div class="fw-semibold">@application.UserName</div>
+                                <div class="small text-body-secondary text-break">@application.UserEmail</div>
+                            </div>
+                            <div class="col-md-6 col-xl-3">
+                                <div class="detail-label">Manager</div>
+                                <div>@application.ManagerName</div>
+                                @if (!string.IsNullOrWhiteSpace(application.ManagerDecision))
+                                {
+                                    <div class="small text-body-secondary">@application.ManagerDecision</div>
+                                }
+                            </div>
+                            <div class="col-md-6 col-xl-3">
+                                <div class="detail-label">Submitted</div>
+                                <div>@application.SubmittedAt.ToString("dd.MM.yyyy HH:mm")</div>
+                            </div>
+                            <div class="col-md-6 col-xl-3">
+                                <div class="detail-label">Status</div>
+                                <span class="badge @statusClass">@application.Status</span>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="detail-label">Business reason</div>
+                                <div class="request-text">@application.BusinessReason</div>
+                            </div>
+                            <div class="col-12 col-xl-6">
+                                <div class="detail-label">Manager reason</div>
+                                <div class="request-text">
+                                    @(string.IsNullOrWhiteSpace(application.ManagerReason) ? "—" : application.ManagerReason)
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>License</th>
+                                        <th style="width: 10rem;">Status</th>
+                                        <th>IT reason</th>
+                                        <th class="text-end" style="width: 24rem;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
                                 @foreach (var item in application.Items)
                                 {
                                     <tr>
-                                        <td>@item.Name</td>
+                                        <td class="fw-semibold">@item.Name</td>
                                         <td>@item.Status</td>
                                         <td>@item.Reason</td>
-                                        <td>
-                                            @if (item.Status == "Pending")
+                                        <td class="text-end">
+                                            @if (application.Status is "AwaitingIT" or "PartiallyApproved" && item.Status == "Pending")
                                             {
-                                                <div class="d-flex flex-wrap gap-2">
+                                                <div class="d-flex flex-wrap justify-content-end gap-2">
                                                     <form method="post" asp-page-handler="Approve">
                                                         <input type="hidden" name="applicationId" value="@application.Id" />
                                                         <input type="hidden" name="itemId" value="@item.Id" />
@@ -77,22 +131,122 @@ else
                                                     </form>
                                                 </div>
                                             }
+                                            else if (application.Status == "AwaitingManager")
+                                            {
+                                                <span class="small text-body-secondary">Waiting for manager</span>
+                                            }
                                         </td>
                                     </tr>
                                 }
-                            </tbody>
-                        </table>
-                    </div>
+                                </tbody>
+                            </table>
+                        </div>
 
-                    @if (application.Status is "Approved" or "PartiallyApproved")
-                    {
-                        <form method="post" asp-page-handler="Complete" class="mt-3">
-                            <input type="hidden" name="applicationId" value="@application.Id" />
-                            <button class="btn btn-primary">Mark approved licenses completed</button>
-                        </form>
-                    }
+                        @if (application.Status is "Approved" or "PartiallyApproved")
+                        {
+                            <div class="d-flex justify-content-end mt-3">
+                                <form method="post" asp-page-handler="Complete">
+                                    <input type="hidden" name="applicationId" value="@application.Id" />
+                                    <button class="btn btn-primary">Mark approved licenses completed</button>
+                                </form>
+                            </div>
+                        }
+                    </div>
                 </div>
-            </article>
+            </div>
         }
     </div>
 }
+
+<style>
+    .license-review-entry:last-child {
+        border-bottom: 0 !important;
+    }
+
+    .license-review-summary {
+        display: grid;
+        grid-template-columns: 5rem minmax(10rem, 1.1fr) minmax(14rem, 2fr) 7rem 10rem 1.5rem;
+        align-items: center;
+        gap: .75rem;
+        padding: .75rem 1rem;
+        background: var(--bs-body-bg);
+        color: var(--bs-body-color);
+    }
+
+    .license-review-summary:hover,
+    .license-review-summary[aria-expanded="true"] {
+        background: var(--bs-tertiary-bg);
+    }
+
+    .license-review-id {
+        font-weight: 700;
+        color: var(--bs-emphasis-color);
+    }
+
+    .license-review-person {
+        font-weight: 600;
+    }
+
+    .license-review-licenses,
+    .license-review-date {
+        color: var(--bs-secondary-color);
+    }
+
+    .license-review-status {
+        justify-self: start;
+    }
+
+    .license-review-chevron {
+        font-size: 1.25rem;
+        line-height: 1;
+        transition: transform .15s ease;
+    }
+
+    .license-review-summary[aria-expanded="true"] .license-review-chevron {
+        transform: rotate(180deg);
+    }
+
+    .license-review-details {
+        background: var(--bs-tertiary-bg);
+    }
+
+    .detail-label {
+        margin-bottom: .2rem;
+        color: var(--bs-secondary-color);
+        font-size: .75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .035em;
+    }
+
+    .request-text {
+        white-space: pre-wrap;
+    }
+
+    @@media (max-width: 991.98px) {
+        .license-review-summary {
+            grid-template-columns: 4.5rem minmax(0, 1fr) 9rem 1.5rem;
+        }
+
+        .license-review-licenses,
+        .license-review-date {
+            display: none;
+        }
+    }
+
+    @@media (max-width: 575.98px) {
+        .license-review-summary {
+            grid-template-columns: 4rem minmax(0, 1fr) 1.5rem;
+        }
+
+        .license-review-status {
+            grid-column: 2;
+            grid-row: 2;
+        }
+
+        .license-review-chevron {
+            grid-column: 3;
+            grid-row: 1 / span 2;
+        }
+    }
+</style>

@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Data.SqlClient;
@@ -227,14 +227,7 @@ WHERE LicenseApplicationId = @ApplicationId;";
         command.CommandText = @"
 SELECT LicenseApplicationId
 FROM dbo.LicenseApplications
-WHERE Status IN
-(
-    N'AwaitingIT',
-    N'PartiallyApproved',
-    N'Approved',
-    N'ITRejected'
-)
-ORDER BY LicenseApplicationId;";
+ORDER BY LicenseApplicationId DESC;";
 
         var ids = new List<long>();
         await using (var reader =
