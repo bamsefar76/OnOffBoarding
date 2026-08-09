@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Data.SqlClient;
@@ -9,36 +9,63 @@ namespace UserChangeQueueWeb.Pages.LicenseRequests;
 [Authorize]
 public sealed class ITReviewModel : PageModel
 {
+    private const int PageSize = 20;
+
     private readonly SqlConnectionFactory _connections;
-    private readonly AccessScopeService _accessScope;
     private readonly LicenseEmailService _emails;
 
     public ITReviewModel(
         SqlConnectionFactory connections,
-        AccessScopeService accessScope,
         LicenseEmailService emails)
     {
         _connections = connections;
-        _accessScope = accessScope;
         _emails = emails;
     }
 
     [BindProperty]
     public string? DecisionReason { get; set; }
 
+    [BindProperty(SupportsGet = true)]
+    public string? Search { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public string? StatusFilter { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public string? RequesterFilter { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public string? LicenseFilter { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public DateTime? DateFilter { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public int PageNumber { get; set; } = 1;
+
+    [BindProperty(SupportsGet = true)]
+    public long? OpenId { get; set; }
+
     [TempData]
-    public string? StatusMessage { get; set; }
+    public string? StatusMessageKey { get; set; }
+
+    [TempData]
+    public string? StatusMessageArgument { get; set; }
 
     public List<ApplicationDetails> Applications { get; } = new();
+    public List<string> LicenseOptions { get; } = new();
+    public int TotalCount { get; private set; }
+    public int TotalPages { get; private set; } = 1;
+    public int PageSizeValue => PageSize;
 
     public async Task<IActionResult> OnGetAsync()
     {
-        if (!await IsItAsync())
-            return Forbid();
+        NormalizeFilters();
 
         await using var connection =
             await _connections.OpenAsync(HttpContext.RequestAborted);
 
+        await LoadLicenseOptionsAsync(connection);
         await LoadApplicationsAsync(connection);
         return Page();
     }
@@ -48,12 +75,13 @@ public sealed class ITReviewModel : PageModel
 
     public async Task<IActionResult> OnPostRejectAsync(long applicationId, long itemId)
     {
+        NormalizeFilters();
         DecisionReason = DecisionReason?.Trim() ?? "";
 
         if (string.IsNullOrWhiteSpace(DecisionReason))
         {
-            StatusMessage = "A rejection reason is required.";
-            return RedirectToPage();
+            StatusMessageKey = "licenseReview.message.rejectionReasonRequired";
+            return RedirectToPage(GetRedirectValues(applicationId));
         }
 
         return await ItDecisionAsync(
@@ -65,8 +93,7 @@ public sealed class ITReviewModel : PageModel
 
     public async Task<IActionResult> OnPostCompleteAsync(long applicationId)
     {
-        if (!await IsItAsync())
-            return Forbid();
+        NormalizeFilters();
 
         await using var connection =
             await _connections.OpenAsync(HttpContext.RequestAborted);
@@ -110,25 +137,32 @@ WHERE LicenseApplicationId = @ApplicationId
 
             await command.ExecuteNonQueryAsync(HttpContext.RequestAborted);
 
-            var body =
-                "<p>Hello " +
-                System.Net.WebUtility.HtmlEncode(application.UserName) +
-                ",</p><p>IT marked application #" + applicationId +
-                " as completed.</p><p>" + application.LicenseHtml + "</p>";
+            var licenseText = string.Join(
+                Environment.NewLine,
+                application.Items.Select(x => "- " + x.Name));
 
-            await _emails.QueueAsync(
+            await _emails.QueueTemplateAsync(
                 connection,
                 transaction,
                 "LicenseRequestCompleted",
                 application.UserEmail,
                 application.UserName,
-                $"License application {applicationId} completed",
-                body,
+                new Dictionary<string, string?>
+                {
+                    ["ApplicationId"] = applicationId.ToString(),
+                    ["RequesterName"] = application.UserName,
+                    ["LicenseList"] = licenseText
+                },
+                new Dictionary<string, string?>
+                {
+                    ["LicenseList"] = application.LicenseHtml
+                },
                 HttpContext.RequestAborted);
 
             await transaction.CommitAsync(HttpContext.RequestAborted);
-            StatusMessage = $"Application {applicationId} was completed.";
-            return RedirectToPage();
+            StatusMessageKey = "licenseReview.message.completed";
+            StatusMessageArgument = applicationId.ToString();
+            return RedirectToPage(GetRedirectValues(applicationId));
         }
         catch
         {
@@ -143,8 +177,7 @@ WHERE LicenseApplicationId = @ApplicationId
         string decision,
         string? reason)
     {
-        if (!await IsItAsync())
-            return Forbid();
+        NormalizeFilters();
 
         await using var connection =
             await _connections.OpenAsync(HttpContext.RequestAborted);
@@ -202,10 +235,12 @@ WHERE LicenseApplicationId = @ApplicationId;";
             await command.ExecuteNonQueryAsync(HttpContext.RequestAborted);
             await transaction.CommitAsync(HttpContext.RequestAborted);
 
-            StatusMessage =
-                $"License item {itemId} was {decision.ToLowerInvariant()}.";
+            StatusMessageKey = decision == "Approved"
+                ? "licenseReview.message.itemApproved"
+                : "licenseReview.message.itemRejected";
+            StatusMessageArgument = itemId.ToString();
 
-            return RedirectToPage();
+            return RedirectToPage(GetRedirectValues(applicationId));
         }
         catch
         {
@@ -214,20 +249,103 @@ WHERE LicenseApplicationId = @ApplicationId;";
         }
     }
 
-    private async Task<bool> IsItAsync() =>
-        (await _accessScope.GetCurrentAsync(
-            User,
-            HttpContext.RequestAborted)).IsIT;
+    private async Task LoadLicenseOptionsAsync(SqlConnection connection)
+    {
+        LicenseOptions.Clear();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = @"
+SELECT DISTINCT Name
+FROM dbo.LicenseProducts
+WHERE NULLIF(LTRIM(RTRIM(Name)), N'') IS NOT NULL
+ORDER BY Name;";
+
+        await using var reader =
+            await command.ExecuteReaderAsync(HttpContext.RequestAborted);
+
+        while (await reader.ReadAsync(HttpContext.RequestAborted))
+        {
+            LicenseOptions.Add(reader.GetString(0));
+        }
+    }
 
     private async Task LoadApplicationsAsync(SqlConnection connection)
     {
         Applications.Clear();
 
+        var whereSql = @"
+WHERE (@Status IS NULL OR application.Status = @Status)
+  AND
+  (
+      @Requester IS NULL
+      OR application.RequestedForDisplayName LIKE N'%' + @Requester + N'%'
+      OR application.RequestedForEmail LIKE N'%' + @Requester + N'%'
+  )
+  AND
+  (
+      @License IS NULL
+      OR EXISTS
+      (
+          SELECT 1
+          FROM dbo.LicenseApplicationItems AS filterItem
+          INNER JOIN dbo.LicenseProducts AS filterProduct
+              ON filterProduct.LicenseProductId = filterItem.LicenseProductId
+          WHERE filterItem.LicenseApplicationId = application.LicenseApplicationId
+            AND filterProduct.Name = @License
+      )
+  )
+  AND
+  (
+      @SubmittedDate IS NULL
+      OR
+      (
+          application.SubmittedAt >= @SubmittedDate
+          AND application.SubmittedAt < DATEADD(day, 1, @SubmittedDate)
+      )
+  )
+  AND
+  (
+      @Search IS NULL
+      OR CONVERT(nvarchar(30), application.LicenseApplicationId) LIKE N'%' + @Search + N'%'
+      OR application.RequestedForDisplayName LIKE N'%' + @Search + N'%'
+      OR application.RequestedForEmail LIKE N'%' + @Search + N'%'
+      OR application.ManagerDisplayName LIKE N'%' + @Search + N'%'
+      OR application.BusinessReason LIKE N'%' + @Search + N'%'
+      OR EXISTS
+      (
+          SELECT 1
+          FROM dbo.LicenseApplicationItems AS searchItem
+          INNER JOIN dbo.LicenseProducts AS searchProduct
+              ON searchProduct.LicenseProductId = searchItem.LicenseProductId
+          WHERE searchItem.LicenseApplicationId = application.LicenseApplicationId
+            AND searchProduct.Name LIKE N'%' + @Search + N'%'
+      )
+  )";
+
+        await using (var countCommand = connection.CreateCommand())
+        {
+            countCommand.CommandText = $@"
+SELECT COUNT(*)
+FROM dbo.LicenseApplications AS application
+{whereSql};";
+            AddFilterParameters(countCommand);
+            TotalCount = Convert.ToInt32(
+                await countCommand.ExecuteScalarAsync(HttpContext.RequestAborted));
+        }
+
+        TotalPages = Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
+        PageNumber = Math.Clamp(PageNumber, 1, TotalPages);
+
         await using var command = connection.CreateCommand();
-        command.CommandText = @"
-SELECT LicenseApplicationId
-FROM dbo.LicenseApplications
-ORDER BY LicenseApplicationId DESC;";
+        command.CommandText = $@"
+SELECT application.LicenseApplicationId
+FROM dbo.LicenseApplications AS application
+{whereSql}
+ORDER BY application.SubmittedAt DESC, application.LicenseApplicationId DESC
+OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
+        AddFilterParameters(command);
+        command.Parameters.AddInt("@Offset", (PageNumber - 1) * PageSize);
+        command.Parameters.AddInt("@PageSize", PageSize);
 
         var ids = new List<long>();
         await using (var reader =
@@ -247,6 +365,15 @@ ORDER BY LicenseApplicationId DESC;";
             if (application is not null)
                 Applications.Add(application);
         }
+    }
+
+    private void AddFilterParameters(SqlCommand command)
+    {
+        command.Parameters.AddNVarChar("@Status", StatusFilter, 40);
+        command.Parameters.AddNVarChar("@Requester", RequesterFilter, 300);
+        command.Parameters.AddNVarChar("@License", LicenseFilter, 200);
+        command.Parameters.AddNullableDate("@SubmittedDate", DateFilter);
+        command.Parameters.AddNVarChar("@Search", Search, 300);
     }
 
     private async Task<ApplicationDetails?> LoadApplicationAsync(
@@ -313,6 +440,29 @@ ORDER BY product.Name;";
 
         return result;
     }
+
+    private object GetRedirectValues(long? openId = null) => new
+    {
+        Search,
+        StatusFilter,
+        RequesterFilter,
+        LicenseFilter,
+        DateFilter = DateFilter?.ToString("yyyy-MM-dd"),
+        PageNumber,
+        OpenId = openId
+    };
+
+    private void NormalizeFilters()
+    {
+        Search = NullIfWhiteSpace(Search);
+        StatusFilter = NullIfWhiteSpace(StatusFilter);
+        RequesterFilter = NullIfWhiteSpace(RequesterFilter);
+        LicenseFilter = NullIfWhiteSpace(LicenseFilter);
+        PageNumber = Math.Max(1, PageNumber);
+    }
+
+    private static string? NullIfWhiteSpace(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string Get(SqlDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal)

@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -30,9 +29,12 @@ public sealed class LicenseProductsModel : PageModel
     public EditModel Edit { get; set; } = new() { Active = true, SortOrder = 100 };
 
     [TempData]
-    public string? StatusMessage { get; set; }
+    public string? StatusMessageKey { get; set; }
 
-    public string? ErrorMessage { get; set; }
+    [TempData]
+    public string? StatusMessageArgument { get; set; }
+
+    public string? ErrorMessageKey { get; private set; }
     public List<ProductRow> Products { get; } = new();
 
     public async Task OnGetAsync()
@@ -52,7 +54,8 @@ public sealed class LicenseProductsModel : PageModel
     {
         Normalize(Edit);
 
-        if (!ModelState.IsValid)
+        ErrorMessageKey = Validate(Edit);
+        if (!string.IsNullOrWhiteSpace(ErrorMessageKey))
         {
             SelectedId = Edit.LicenseProductId > 0 ? Edit.LicenseProductId : null;
             await LoadPageAsync(loadSelected: false);
@@ -82,13 +85,14 @@ WHERE LicenseProductId = @Id;";
 
                 if (await cmd.ExecuteNonQueryAsync(HttpContext.RequestAborted) == 0)
                 {
-                    ErrorMessage = "The license product was not found.";
+                    ErrorMessageKey = "licenseProducts.error.notFound";
                     await LoadPageAsync(cn, loadSelected: false);
                     return Page();
                 }
 
                 SelectedId = Edit.LicenseProductId;
-                StatusMessage = $"Saved license product '{Edit.Name}'.";
+                StatusMessageKey = "licenseProducts.message.saved";
+                StatusMessageArgument = Edit.Name;
             }
             else
             {
@@ -121,12 +125,13 @@ VALUES
 
                 SelectedId = Convert.ToInt32(
                     await cmd.ExecuteScalarAsync(HttpContext.RequestAborted));
-                StatusMessage = $"Created license product '{Edit.Name}'.";
+                StatusMessageKey = "licenseProducts.message.created";
+                StatusMessageArgument = Edit.Name;
             }
         }
         catch (SqlException ex) when (ex.Number is 2601 or 2627)
         {
-            ErrorMessage = "A license product with the same unique value already exists.";
+            ErrorMessageKey = "licenseProducts.error.duplicate";
             await LoadPageAsync(cn, loadSelected: false);
             return Page();
         }
@@ -148,9 +153,9 @@ SET
 WHERE LicenseProductId = @Id;";
 
         await cmd.ExecuteNonQueryAsync(HttpContext.RequestAborted);
-        StatusMessage = active
-            ? "License product was activated."
-            : "License product was disabled.";
+        StatusMessageKey = active
+            ? "licenseProducts.message.activated"
+            : "licenseProducts.message.disabled";
 
         return RedirectToPage(new { id, Search, ShowInactive });
     }
@@ -167,7 +172,10 @@ WHERE LicenseProductId = @Id;";
 
         await using (var cmd = cn.CreateCommand())
         {
-            cmd.Parameters.AddNVarChar("@Search", string.IsNullOrWhiteSpace(Search) ? null : Search.Trim(), 200);
+            cmd.Parameters.AddNVarChar(
+                "@Search",
+                string.IsNullOrWhiteSpace(Search) ? null : Search.Trim(),
+                200);
             cmd.Parameters.AddBit("@ShowInactive", ShowInactive);
             cmd.CommandText = @"
 SELECT
@@ -191,7 +199,9 @@ WHERE (@ShowInactive = 1 OR Active = 1)
   )
 ORDER BY SortOrder, COALESCE(ProductFamily, Name), LicenseLevel, Name;";
 
-            await using var reader = await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+            await using var reader =
+                await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+
             while (await reader.ReadAsync(HttpContext.RequestAborted))
             {
                 Products.Add(new ProductRow
@@ -225,7 +235,9 @@ SELECT
 FROM dbo.LicenseProducts
 WHERE LicenseProductId = @Id;";
 
-            await using var reader = await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+            await using var reader =
+                await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+
             if (await reader.ReadAsync(HttpContext.RequestAborted))
             {
                 Edit = new EditModel
@@ -240,6 +252,23 @@ WHERE LicenseProductId = @Id;";
                 };
             }
         }
+    }
+
+    private static string? Validate(EditModel model)
+    {
+        if (string.IsNullOrWhiteSpace(model.Name))
+            return "licenseProducts.validation.nameRequired";
+
+        if (model.Name.Length > 200)
+            return "licenseProducts.validation.nameTooLong";
+
+        if (model.Description?.Length > 1000)
+            return "licenseProducts.validation.descriptionTooLong";
+
+        if (model.ProductFamily?.Length > 100)
+            return "licenseProducts.validation.familyTooLong";
+
+        return null;
     }
 
     private static void Normalize(EditModel model)
@@ -268,16 +297,9 @@ WHERE LicenseProductId = @Id;";
     public sealed class EditModel
     {
         public int LicenseProductId { get; set; }
-
-        [Required, StringLength(200)]
         public string Name { get; set; } = "";
-
-        [StringLength(1000)]
         public string? Description { get; set; }
-
-        [StringLength(100)]
         public string? ProductFamily { get; set; }
-
         public int? LicenseLevel { get; set; }
         public bool Active { get; set; } = true;
         public int SortOrder { get; set; } = 100;

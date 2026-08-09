@@ -21,7 +21,7 @@
         ["nav.updateUser"] = "Update user",
         ["nav.addAssignment"] = "Add assignment",
         ["nav.supervisor"] = "Supervisor",
-        ["nav.approvals"] = "Approvals",
+        ["nav.userApprovals"] = "User approvals",
         ["nav.upcomingChanges"] = "Upcoming",
         ["nav.reports"] = "Reports",
         ["nav.cfoReport"] = "CFO report",
@@ -37,16 +37,22 @@
         ["nav.projectImport"] = "Imported projects",
         ["nav.selfService"] = "Self Service",
         ["nav.temporaryAccess"] = "Temporary access",
-        ["nav.requestLicenses"] = "Request licenses",
-        ["nav.myLicenseRequests"] = "My license requests",
-        ["nav.licenseReview"] = "License review",
+        ["nav.licenseRequests"] = "License requests",
+        ["nav.licenseReviewIT"] = "License review (IT)",
         ["nav.licenseProducts"] = "License products",
         ["nav.temporaryAccessGroups"] = "Temporary access groups",
         ["nav.privacy"] = "Privacy",
         ["nav.logout"] = "Sign out",
         ["nav.language"] = "Language",
         ["nav.signedInAs"] = "Signed in as",
-        ["nav.accountMenu"] = "Account menu"
+        ["nav.accountMenu"] = "Account menu",
+        ["nav.toggleNavigation"] = "Toggle navigation",
+        ["nav.switchTheme"] = "Switch colour theme",
+        ["nav.theme"] = "Theme",
+        ["nav.lightMode"] = "Light mode",
+        ["nav.darkMode"] = "Dark mode",
+        ["nav.switchToLightMode"] = "Switch to light mode",
+        ["nav.switchToDarkMode"] = "Switch to dark mode"
     };
 
     var uiText = await UiTextService.GetTextsAsync(Context, textFallbacks);
@@ -79,10 +85,9 @@
     var canOpenProjectImport = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Projects/Import");
     var canOpenProjects = canOpenProjectList || canOpenProjectImport;
     var canOpenTemporaryAccess = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/TemporaryAccess");
-    var canOpenLicenseRequests = isAuthenticated;
+    var canOpenLicenseRequests = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/LicenseRequests/Index");
     var canOpenLicenseReview = isAuthenticated &&
-        (await PageAccessService.UserHasAccessAsync(currentUserName, "/LicenseRequests/ITReview")
-         || accessScope.IsIT);
+        await PageAccessService.UserHasAccessAsync(currentUserName, "/LicenseRequests/ITReview");
     var canOpenSelfService = canOpenTemporaryAccess || canOpenLicenseRequests;
 
     var canOpenGroupRules = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/GroupRules");
@@ -152,7 +157,7 @@
             <div class="container-fluid">
                 <a class="navbar-brand" asp-area="" asp-page="/Index">@T("app.title")</a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
-                        aria-expanded="false" aria-label="Toggle navigation">
+                        aria-expanded="false" aria-label="@T("nav.toggleNavigation")">
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="navbar-collapse collapse d-lg-inline-flex justify-content-between">
@@ -171,7 +176,7 @@
                         @if (canOpenEmployees)
                         {
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle text-dark@(DropdownActiveClass("/Employees/Duplicates"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/Employees/Duplicates"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                     @T("nav.employees")
                                 </a>
                                 <ul class="dropdown-menu">
@@ -186,7 +191,7 @@
                         @if (canOpenRequests)
                         {
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle text-dark@(DropdownActiveClass("/Requests/NewUser", "/Requests/UpdateUser", "/Assignments/Create", "/Assignments/Submitted", "/Requests/Supervisor", "/Requests/Approvals", "/Requests/Upcoming", "/Requests/UserPendingChanges", "/LicenseRequests/ITReview"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/Requests/NewUser", "/Requests/UpdateUser", "/Assignments/Create", "/Assignments/Submitted", "/Requests/Supervisor", "/Requests/Approvals", "/Requests/Upcoming", "/Requests/UserPendingChanges", "/LicenseRequests/ITReview"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                     @T("nav.requests")
                                 </a>
                                 <ul class="dropdown-menu">
@@ -204,7 +209,7 @@
                                     }
                                     @if (canOpenApprovals)
                                     {
-                                        <li><a class="dropdown-item@(ActiveClass("/Requests/Approvals"))" asp-area="" asp-page="/Requests/Approvals">@T("nav.approvals")</a></li>
+                                        <li><a class="dropdown-item@(ActiveClass("/Requests/Approvals"))" asp-area="" asp-page="/Requests/Approvals">@T("nav.userApprovals")</a></li>
                                     }
                                     @if (canOpenUpcomingChanges)
                                     {
@@ -218,7 +223,7 @@
                                     @if (canOpenLicenseReview)
                                     {
                                         <li><hr class="dropdown-divider" /></li>
-                                        <li><a class="dropdown-item@(ActiveClass("/LicenseRequests/ITReview"))" asp-area="" asp-page="/LicenseRequests/ITReview">@T("nav.licenseReview")</a></li>
+                                        <li><a class="dropdown-item@(ActiveClass("/LicenseRequests/ITReview"))" asp-area="" asp-page="/LicenseRequests/ITReview">@T("nav.licenseReviewIT")</a></li>
                                     }
                                 </ul>
                             </li>
@@ -250,17 +255,8 @@
                                         <li>
                                             <a class="dropdown-item@(ActiveClass("/LicenseRequests/Index"))"
                                                asp-area=""
-                                               asp-page="/LicenseRequests/Index"
-                                               asp-fragment="new-license-request">
-                                                @T("nav.requestLicenses")
-                                            </a>
-                                        </li>
-                                        <li>
-                                            <a class="dropdown-item@(ActiveClass("/LicenseRequests/Index"))"
-                                               asp-area=""
-                                               asp-page="/LicenseRequests/Index"
-                                               asp-fragment="my-license-applications">
-                                                @T("nav.myLicenseRequests")
+                                               asp-page="/LicenseRequests/Index">
+                                                @T("nav.licenseRequests")
                                             </a>
                                         </li>
                                     }
@@ -271,7 +267,7 @@
                         @if (canOpenReports)
                         {
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle text-dark@(DropdownActiveClass("/Reports/Snapshot"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/Reports/Snapshot"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                     @T("nav.reports")
                                 </a>
                                 <ul class="dropdown-menu">
@@ -283,7 +279,7 @@
                         @if (canOpenProjects)
                         {
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle text-dark@(DropdownActiveClass("/Projects/Index", "/Projects/Import", "/Projects/Edit"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/Projects/Index", "/Projects/Import", "/Projects/Edit"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                     @T("nav.projects")
                                 </a>
                                 <ul class="dropdown-menu">
@@ -302,7 +298,7 @@
                         @if (canOpenSettings)
                         {
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle text-dark@(SettingsActiveClass())" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <a class="nav-link dropdown-toggle@(SettingsActiveClass())" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                     @T("nav.settings")
                                 </a>
                                 <ul class="dropdown-menu">
@@ -350,17 +346,21 @@
                                 <button type="button"
                                         id="themeToggle"
                                         class="btn btn-outline-secondary btn-sm"
-                                        aria-label="Switch colour theme"
-                                        title="Switch colour theme">
+                                        aria-label="@T("nav.switchTheme")"
+                                        title="@T("nav.switchTheme")"
+                                        data-light-text="@T("nav.lightMode")"
+                                        data-dark-text="@T("nav.darkMode")"
+                                        data-switch-light-label="@T("nav.switchToLightMode")"
+                                        data-switch-dark-label="@T("nav.switchToDarkMode")">
                                     <span id="themeToggleIcon" aria-hidden="true">◐</span>
-                                    <span id="themeToggleText" class="d-none d-xl-inline ms-1">Theme</span>
+                                    <span id="themeToggleText" class="d-none d-xl-inline ms-1">@T("nav.theme")</span>
                                 </button>
                             </li>
                             <li class="nav-item">
                                 <a class="nav-link" asp-page="/MyProfile/Index">@accessScope.DisplayName</a>
                             </li>
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle text-dark" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="@T("nav.accountMenu")">
+                                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="@T("nav.accountMenu")">
                                 </a>
                                 <ul class="dropdown-menu dropdown-menu-end">
                                     <li><h6 class="dropdown-header">@T("nav.signedInAs")</h6></li>

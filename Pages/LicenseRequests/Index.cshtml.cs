@@ -1,5 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Data.SqlClient;
@@ -24,13 +23,17 @@ public sealed class IndexModel : PageModel
     [BindProperty]
     public List<int> SelectedLicenseIds { get; set; } = new();
 
-    [BindProperty, Required, StringLength(2000)]
+    [BindProperty]
     public string BusinessReason { get; set; } = "";
 
     [TempData]
-    public string? StatusMessage { get; set; }
+    public string? StatusMessageKey { get; set; }
 
-    public string? ErrorMessage { get; private set; }
+    [TempData]
+    public string? StatusMessageArgument { get; set; }
+
+    public string? ErrorMessageKey { get; private set; }
+    public List<ValidationIssue> ValidationIssues { get; } = new();
     public UserInfo? CurrentUser { get; private set; }
     public List<LicenseOption> Licenses { get; } = new();
     public List<ApplicationDetails> MyApplications { get; } = new();
@@ -65,30 +68,26 @@ public sealed class IndexModel : PageModel
 
         if (CurrentUser is null)
         {
-            ModelState.AddModelError(
-                "",
-                "Your user record could not be found.");
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.userNotFound"));
         }
         else if (string.IsNullOrWhiteSpace(CurrentUser.ManagerSam)
                  || string.IsNullOrWhiteSpace(CurrentUser.ManagerEmail))
         {
-            ModelState.AddModelError(
-                "",
-                "Your manager or manager email address is missing.");
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.managerMissing"));
         }
 
         if (selected.Count == 0)
         {
-            ModelState.AddModelError(
-                nameof(SelectedLicenseIds),
-                "Select at least one license.");
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.selectLicense"));
         }
 
         if (selected.Count != SelectedLicenseIds.Count)
         {
-            ModelState.AddModelError(
-                nameof(SelectedLicenseIds),
-                "One or more selected licenses are unavailable.");
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.unavailableLicense"));
         }
 
         var duplicateFamily = selected
@@ -100,19 +99,23 @@ public sealed class IndexModel : PageModel
 
         if (duplicateFamily is not null)
         {
-            ModelState.AddModelError(
-                nameof(SelectedLicenseIds),
-                $"Select only one license from product family '{duplicateFamily.Key}'.");
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.duplicateFamily",
+                duplicateFamily.Key));
         }
 
         if (string.IsNullOrWhiteSpace(BusinessReason))
         {
-            ModelState.AddModelError(
-                nameof(BusinessReason),
-                "Business reason is required.");
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.businessReasonRequired"));
+        }
+        else if (BusinessReason.Length > 2000)
+        {
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.businessReasonTooLong"));
         }
 
-        if (!ModelState.IsValid || CurrentUser is null)
+        if (ValidationIssues.Count > 0 || CurrentUser is null)
         {
             await LoadLicensesAsync(connection);
             await LoadMyApplicationsAsync(connection);
@@ -227,52 +230,43 @@ VALUES
                 transaction,
                 applicationId);
 
+            var licenseText = string.Join(
+                Environment.NewLine,
+                selected.Select(x => "- " + x.Name));
+
             var licenseHtml = string.Join(
                 "<br />",
                 selected.Select(
                     x => "&#8226; "
                          + System.Net.WebUtility.HtmlEncode(x.Name)));
 
-            var subject =
-                $"License request from {CurrentUser.DisplayName}";
-
-            var body =
-                "<p>Hello "
-                + System.Net.WebUtility.HtmlEncode(
-                    CurrentUser.ManagerName)
-                + ",</p>"
-                + "<p>"
-                + System.Net.WebUtility.HtmlEncode(
-                    CurrentUser.DisplayName)
-                + " requested the following licenses:</p>"
-                + "<p>"
-                + licenseHtml
-                + "</p>"
-                + "<p><strong>Business reason</strong><br />"
-                + System.Net.WebUtility.HtmlEncode(BusinessReason)
-                + "</p>"
-                + "<p><a href=\""
-                + System.Net.WebUtility.HtmlEncode(reviewUrl)
-                + "\">Review and decide</a></p>"
-                + "<p>Application #"
-                + applicationId
-                + "</p>";
-
-            await _emails.QueueAsync(
+            await _emails.QueueTemplateAsync(
                 connection,
                 transaction,
                 "LicenseRequestManagerReview",
                 CurrentUser.ManagerEmail,
                 CurrentUser.ManagerName,
-                subject,
-                body,
+                new Dictionary<string, string?>
+                {
+                    ["ApplicationId"] = applicationId.ToString(),
+                    ["ManagerName"] = CurrentUser.ManagerName,
+                    ["RequesterName"] = CurrentUser.DisplayName,
+                    ["RequesterEmail"] = CurrentUser.Email,
+                    ["BusinessReason"] = BusinessReason,
+                    ["LicenseList"] = licenseText,
+                    ["ReviewUrl"] = reviewUrl
+                },
+                new Dictionary<string, string?>
+                {
+                    ["LicenseList"] = licenseHtml
+                },
                 HttpContext.RequestAborted);
 
             await transaction.CommitAsync(
                 HttpContext.RequestAborted);
 
-            StatusMessage =
-                $"Application {applicationId} was sent to your manager.";
+            StatusMessageKey = "licenseRequests.message.submitted";
+            StatusMessageArgument = applicationId.ToString();
 
             return RedirectToPage(
                 "/LicenseRequests/Index",
@@ -285,7 +279,14 @@ VALUES
             await transaction.RollbackAsync(
                 HttpContext.RequestAborted);
 
-            ErrorMessage = ex.Message;
+            ErrorMessageKey = ex is InvalidOperationException
+                ? ex.Message switch
+                {
+                    "PublicBaseUrlMissing" => "licenseRequests.error.publicBaseUrlMissing",
+                    "PublicBaseUrlInvalid" => "licenseRequests.error.publicBaseUrlInvalid",
+                    _ => "licenseRequests.error.submitFailed"
+                }
+                : "licenseRequests.error.submitFailed";
 
             await LoadLicensesAsync(connection);
             await LoadMyApplicationsAsync(connection);
@@ -317,8 +318,7 @@ WHERE SettingKey = N'PublicBaseUrl'
 
         if (string.IsNullOrWhiteSpace(publicBaseUrl))
         {
-            throw new InvalidOperationException(
-                "Application setting 'PublicBaseUrl' is missing or inactive.");
+            throw new InvalidOperationException("PublicBaseUrlMissing");
         }
 
         if (!Uri.TryCreate(
@@ -326,8 +326,7 @@ WHERE SettingKey = N'PublicBaseUrl'
                 UriKind.Absolute,
                 out var baseUri))
         {
-            throw new InvalidOperationException(
-                "Application setting 'PublicBaseUrl' is not a valid absolute URL.");
+            throw new InvalidOperationException("PublicBaseUrlInvalid");
         }
 
         return new Uri(
@@ -626,6 +625,9 @@ ORDER BY product.Name;";
             : Convert.ToString(
                   reader.GetValue(ordinal))
               ?? "";
+
+
+    public sealed record ValidationIssue(string Key, string? Argument = null);
 
     public sealed class UserInfo
     {

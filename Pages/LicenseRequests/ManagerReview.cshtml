@@ -1,49 +1,240 @@
 @page
 @model UserChangeQueueWeb.Pages.LicenseRequests.ManagerReviewModel
-@{ ViewData["Title"] = "Review license application"; }
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.status"] = "Status",
+        ["common.notProvided"] = "Not provided",
+        ["managerLicenseReview.title"] = "Review license application",
+        ["managerLicenseReview.help"] = "Review the business need before the request is sent to IT.",
+        ["managerLicenseReview.applicationNumber"] = "Application #{0}",
+        ["managerLicenseReview.requestedBy"] = "Requested by",
+        ["managerLicenseReview.licenses"] = "Licenses",
+        ["managerLicenseReview.businessReason"] = "Business reason",
+        ["managerLicenseReview.submitted"] = "Submitted",
+        ["managerLicenseReview.decision"] = "Decision",
+        ["managerLicenseReview.reason"] = "Reason",
+        ["managerLicenseReview.decisionReason"] = "Decision reason",
+        ["managerLicenseReview.decisionReasonHelp"] = "A reason is required for both approval and rejection.",
+        ["managerLicenseReview.approve"] = "Approve and send to IT",
+        ["managerLicenseReview.reject"] = "Reject",
+        ["managerLicenseReview.message.approved"] = "Approved and sent to IT.",
+        ["managerLicenseReview.message.rejected"] = "Application rejected.",
+        ["managerLicenseReview.validation.reasonRequired"] = "A reason is required for both approval and rejection.",
+        ["managerLicenseReview.validation.reasonTooLong"] = "The reason cannot be longer than 2000 characters.",
+        ["licenseStatus.awaitingManager"] = "Awaiting manager",
+        ["licenseStatus.awaitingIT"] = "Awaiting IT",
+        ["licenseStatus.approved"] = "Approved",
+        ["licenseStatus.partiallyApproved"] = "Partially approved",
+        ["licenseStatus.completed"] = "Completed",
+        ["licenseStatus.managerRejected"] = "Rejected by manager",
+        ["licenseStatus.itRejected"] = "Rejected by IT",
+        ["licenseDecision.approved"] = "Approved",
+        ["licenseDecision.rejected"] = "Rejected"
+    };
 
-<h1 class="h2 mb-4">Review license application</h1>
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    ViewData["Title"] = uiText.T("managerLicenseReview.title", textFallbacks["managerLicenseReview.title"]);
 
-@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    string F(string key, params object[] args) =>
+        string.Format(uiText.T(key, textFallbacks[key]), args);
+
+    string StatusText(string status) => status switch
+    {
+        "AwaitingManager" => T("licenseStatus.awaitingManager"),
+        "AwaitingIT" => T("licenseStatus.awaitingIT"),
+        "Approved" => T("licenseStatus.approved"),
+        "PartiallyApproved" => T("licenseStatus.partiallyApproved"),
+        "Completed" => T("licenseStatus.completed"),
+        "ManagerRejected" => T("licenseStatus.managerRejected"),
+        "ITRejected" => T("licenseStatus.itRejected"),
+        _ => status
+    };
+
+    string DecisionText(string decision) => decision switch
+    {
+        "Approved" => T("licenseDecision.approved"),
+        "Rejected" => T("licenseDecision.rejected"),
+        _ => decision
+    };
+
+    string StatusBadgeClass(string status) => status switch
+    {
+        "AwaitingManager" => "app-status-badge app-status-badge-warning",
+        "AwaitingIT" => "app-status-badge app-status-badge-primary",
+        "Approved" or "Completed" => "app-status-badge app-status-badge-success",
+        "PartiallyApproved" => "app-status-badge app-status-badge-info",
+        "ManagerRejected" or "ITRejected" => "app-status-badge app-status-badge-danger",
+        _ => "app-status-badge app-status-badge-secondary"
+    };
+
+    string StatusStripeClass(string status) => status switch
+    {
+        "AwaitingManager" => "manager-review-awaiting",
+        "AwaitingIT" => "manager-review-it",
+        "Approved" or "Completed" => "manager-review-approved",
+        "PartiallyApproved" => "manager-review-partial",
+        "ManagerRejected" or "ITRejected" => "manager-review-rejected",
+        _ => "manager-review-other"
+    };
+
+    var statusMessage = Model.StatusMessageKey switch
+    {
+        "managerLicenseReview.message.approved" => T("managerLicenseReview.message.approved"),
+        "managerLicenseReview.message.rejected" => T("managerLicenseReview.message.rejected"),
+        _ => ""
+    };
+
+    var validationMessage = Model.ValidationMessageKey switch
+    {
+        "managerLicenseReview.validation.reasonRequired" => T("managerLicenseReview.validation.reasonRequired"),
+        "managerLicenseReview.validation.reasonTooLong" => T("managerLicenseReview.validation.reasonTooLong"),
+        _ => ""
+    };
+}
+
+<div class="mb-4">
+    <h1 class="h2 mb-1">@T("managerLicenseReview.title")</h1>
+    <p class="text-body-secondary mb-0">@T("managerLicenseReview.help")</p>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
 {
-    <div class="alert alert-success">@Model.StatusMessage</div>
+    <div class="alert alert-success" role="alert">@statusMessage</div>
 }
 
 @if (Model.Application is not null)
 {
     var application = Model.Application;
+    var badgeClass = StatusBadgeClass(application.Status);
+    var stripeClass = StatusStripeClass(application.Status);
 
-    <div class="card mb-4">
-        <div class="card-body">
-            <div class="d-flex justify-content-between gap-2">
-                <h2 class="h5">Application #@application.Id</h2>
-                <span class="badge text-bg-secondary">@application.Status</span>
+    <article class="card manager-review-card @stripeClass mb-4">
+        <div class="card-body p-3 p-lg-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+                <h2 class="h5 mb-0">@F("managerLicenseReview.applicationNumber", application.Id)</h2>
+                <span class="badge @badgeClass">@StatusText(application.Status)</span>
             </div>
-            <dl class="row mb-0">
-                <dt class="col-sm-3">Requested by</dt><dd class="col-sm-9">@application.UserName</dd>
-                <dt class="col-sm-3">Licenses</dt><dd class="col-sm-9">@Html.Raw(application.LicenseHtml)</dd>
-                <dt class="col-sm-3">Business reason</dt><dd class="col-sm-9">@application.BusinessReason</dd>
+
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="manager-review-label">@T("managerLicenseReview.requestedBy")</div>
+                    <div class="fw-semibold">@application.UserName</div>
+                    <div class="small text-body-secondary text-break">@application.UserEmail</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="manager-review-label">@T("managerLicenseReview.submitted")</div>
+                    <div>@application.SubmittedAt.ToString("dd.MM.yyyy HH:mm")</div>
+                </div>
+                <div class="col-md-3">
+                    <div class="manager-review-label">@T("common.status")</div>
+                    <span class="badge @badgeClass">@StatusText(application.Status)</span>
+                </div>
+                <div class="col-lg-6">
+                    <div class="manager-review-label">@T("managerLicenseReview.businessReason")</div>
+                    <div class="manager-review-text">@application.BusinessReason</div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="manager-review-label">@T("managerLicenseReview.licenses")</div>
+                    <ul class="mb-0 ps-3">
+                        @foreach (var item in application.Items)
+                        {
+                            <li>@item.Name</li>
+                        }
+                    </ul>
+                </div>
+
                 @if (!string.IsNullOrWhiteSpace(application.ManagerDecision))
                 {
-                    <dt class="col-sm-3">Decision</dt><dd class="col-sm-9">@application.ManagerDecision</dd>
-                    <dt class="col-sm-3">Reason</dt><dd class="col-sm-9">@application.ManagerReason</dd>
+                    <div class="col-md-4">
+                        <div class="manager-review-label">@T("managerLicenseReview.decision")</div>
+                        <div>@DecisionText(application.ManagerDecision)</div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="manager-review-label">@T("managerLicenseReview.reason")</div>
+                        <div class="manager-review-text">
+                            @(string.IsNullOrWhiteSpace(application.ManagerReason)
+                                ? T("common.notProvided")
+                                : application.ManagerReason)
+                        </div>
+                    </div>
                 }
-            </dl>
+            </div>
         </div>
-    </div>
+    </article>
 
     @if (application.Status == "AwaitingManager")
     {
-        <form method="post">
-            <input type="hidden" asp-for="Id" />
-            <div class="mb-3">
-                <label asp-for="DecisionReason" class="form-label">Decision reason</label>
-                <textarea asp-for="DecisionReason" class="form-control" rows="5" required></textarea>
-                <div class="form-text">Required for both approval and rejection.</div>
-                <span asp-validation-for="DecisionReason" class="text-danger"></span>
+        <form method="post" class="card">
+            <div class="card-body p-3 p-lg-4">
+                <input type="hidden" asp-for="Id" />
+
+                <div class="mb-3">
+                    <label asp-for="DecisionReason" class="form-label fw-semibold">@T("managerLicenseReview.decisionReason")</label>
+                    <textarea asp-for="DecisionReason"
+                              class="form-control"
+                              rows="5"
+                              maxlength="2000"
+                              aria-describedby="manager-decision-help manager-decision-error"></textarea>
+                    <div id="manager-decision-help" class="form-text">@T("managerLicenseReview.decisionReasonHelp")</div>
+                    @if (!string.IsNullOrWhiteSpace(validationMessage))
+                    {
+                        <div id="manager-decision-error" class="text-danger small mt-1">@validationMessage</div>
+                    }
+                </div>
+
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-success" type="submit" asp-page-handler="Approve">
+                        @T("managerLicenseReview.approve")
+                    </button>
+                    <button class="btn btn-outline-danger" type="submit" asp-page-handler="Reject">
+                        @T("managerLicenseReview.reject")
+                    </button>
+                </div>
             </div>
-            <button class="btn btn-success" asp-page-handler="Approve">Approve and send to IT</button>
-            <button class="btn btn-outline-danger" asp-page-handler="Reject">Reject</button>
         </form>
     }
 }
+
+<style>
+    .manager-review-card {
+        border-inline-start: .35rem solid var(--bs-secondary);
+    }
+
+    .manager-review-awaiting {
+        border-inline-start-color: var(--bs-warning);
+    }
+
+    .manager-review-it {
+        border-inline-start-color: var(--bs-primary);
+    }
+
+    .manager-review-approved {
+        border-inline-start-color: var(--bs-success);
+    }
+
+    .manager-review-partial {
+        border-inline-start-color: var(--bs-info);
+    }
+
+    .manager-review-rejected {
+        border-inline-start-color: var(--bs-danger);
+    }
+
+    .manager-review-label {
+        color: var(--app-muted-color);
+        font-size: .75rem;
+        font-weight: 700;
+        letter-spacing: .035em;
+        margin-bottom: .25rem;
+        text-transform: uppercase;
+    }
+
+    .manager-review-text {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+</style>

@@ -1,105 +1,297 @@
-﻿@page
+@page
 @model UserChangeQueueWeb.Pages.LicenseRequests.ITReviewModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
 @{
-    ViewData["Title"] = "License review";
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.all"] = "All",
+        ["common.search"] = "Search",
+        ["common.filter"] = "Filter",
+        ["common.clear"] = "Clear",
+        ["common.status"] = "Status",
+        ["common.actions"] = "Actions",
+        ["common.previous"] = "Previous",
+        ["common.next"] = "Next",
+        ["common.notProvided"] = "Not provided",
+        ["licenseReview.title"] = "License review",
+        ["licenseReview.help"] = "Review license applications and complete approved licenses after IT processing.",
+        ["licenseReview.requestCount"] = "{0} requests",
+        ["licenseReview.resultCount"] = "Showing {0}-{1} of {2}",
+        ["licenseReview.noApplications"] = "No license applications matched the current filters.",
+        ["licenseReview.requester"] = "Requester",
+        ["licenseReview.manager"] = "Manager",
+        ["licenseReview.businessReason"] = "Business reason",
+        ["licenseReview.managerReason"] = "Manager reason",
+        ["licenseReview.submitted"] = "Submitted",
+        ["licenseReview.licenses"] = "Licenses",
+        ["licenseReview.license"] = "License",
+        ["licenseReview.itReason"] = "IT reason",
+        ["licenseReview.itActions"] = "IT actions",
+        ["licenseReview.approve"] = "Approve",
+        ["licenseReview.reject"] = "Reject",
+        ["licenseReview.rejectionReason"] = "Rejection reason",
+        ["licenseReview.rejectionReasonPlaceholder"] = "Required rejection reason",
+        ["licenseReview.waitingForManager"] = "Waiting for manager",
+        ["licenseReview.complete"] = "Mark approved licenses completed",
+        ["licenseReview.searchLabel"] = "Search",
+        ["licenseReview.searchPlaceholder"] = "Request number, requester, manager, reason or license",
+        ["licenseReview.requesterFilter"] = "Requester",
+        ["licenseReview.requesterPlaceholder"] = "Name or email",
+        ["licenseReview.licenseFilter"] = "License",
+        ["licenseReview.dateFilter"] = "Date",
+        ["licenseReview.page"] = "Page {0} of {1}",
+        ["licenseReview.openApplicationAria"] = "Open license application {0}",
+        ["licenseReview.message.rejectionReasonRequired"] = "A rejection reason is required.",
+        ["licenseReview.message.completed"] = "Application {0} was completed.",
+        ["licenseReview.message.itemApproved"] = "License item {0} was approved.",
+        ["licenseReview.message.itemRejected"] = "License item {0} was rejected.",
+        ["licenseStatus.awaitingManager"] = "Awaiting manager",
+        ["licenseStatus.awaitingIT"] = "Awaiting IT",
+        ["licenseStatus.approved"] = "Approved",
+        ["licenseStatus.partiallyApproved"] = "Partially approved",
+        ["licenseStatus.completed"] = "Completed",
+        ["licenseStatus.managerRejected"] = "Rejected by manager",
+        ["licenseStatus.itRejected"] = "Rejected by IT",
+        ["licenseItemStatus.pending"] = "Pending",
+        ["licenseItemStatus.approved"] = "Approved",
+        ["licenseItemStatus.rejected"] = "Rejected",
+        ["licenseItemStatus.completed"] = "Completed",
+        ["licenseDecision.approved"] = "Approved",
+        ["licenseDecision.rejected"] = "Rejected"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    ViewData["Title"] = uiText.T("licenseReview.title", textFallbacks["licenseReview.title"]);
+
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    string F(string key, params object[] args) =>
+        string.Format(uiText.T(key, textFallbacks[key]), args);
+
+    string StatusText(string status) => status switch
+    {
+        "AwaitingManager" => T("licenseStatus.awaitingManager"),
+        "AwaitingIT" => T("licenseStatus.awaitingIT"),
+        "Approved" => T("licenseStatus.approved"),
+        "PartiallyApproved" => T("licenseStatus.partiallyApproved"),
+        "Completed" => T("licenseStatus.completed"),
+        "ManagerRejected" => T("licenseStatus.managerRejected"),
+        "ITRejected" => T("licenseStatus.itRejected"),
+        "Pending" => T("licenseItemStatus.pending"),
+        "Rejected" => T("licenseItemStatus.rejected"),
+        _ => status
+    };
+
+    string ItemStatusText(string status) => status switch
+    {
+        "Pending" => T("licenseItemStatus.pending"),
+        "Approved" => T("licenseItemStatus.approved"),
+        "Rejected" => T("licenseItemStatus.rejected"),
+        "Completed" => T("licenseItemStatus.completed"),
+        _ => status
+    };
+
+    string DecisionText(string decision) => decision switch
+    {
+        "Approved" => T("licenseDecision.approved"),
+        "Rejected" => T("licenseDecision.rejected"),
+        _ => decision
+    };
+
+    string StatusBadgeClass(string status) => status switch
+    {
+        "AwaitingManager" => "app-status-badge app-status-badge-warning",
+        "AwaitingIT" => "app-status-badge app-status-badge-primary",
+        "Approved" => "app-status-badge app-status-badge-success",
+        "PartiallyApproved" => "app-status-badge app-status-badge-info",
+        "Completed" => "app-status-badge app-status-badge-success",
+        "ManagerRejected" or "ITRejected" => "app-status-badge app-status-badge-danger",
+        _ => "app-status-badge app-status-badge-secondary"
+    };
+
+    string StatusStripeClass(string status) => status switch
+    {
+        "AwaitingManager" => "license-status-awaiting-manager",
+        "AwaitingIT" => "license-status-awaiting-it",
+        "Approved" or "Completed" => "license-status-approved",
+        "PartiallyApproved" => "license-status-partial",
+        "ManagerRejected" or "ITRejected" => "license-status-rejected",
+        _ => "license-status-other"
+    };
+
+    string StatusMessageText() => Model.StatusMessageKey switch
+    {
+        "licenseReview.message.rejectionReasonRequired" => T("licenseReview.message.rejectionReasonRequired"),
+        "licenseReview.message.completed" => F("licenseReview.message.completed", Model.StatusMessageArgument ?? ""),
+        "licenseReview.message.itemApproved" => F("licenseReview.message.itemApproved", Model.StatusMessageArgument ?? ""),
+        "licenseReview.message.itemRejected" => F("licenseReview.message.itemRejected", Model.StatusMessageArgument ?? ""),
+        _ => ""
+    };
+
+    var firstResult = Model.TotalCount == 0
+        ? 0
+        : ((Model.PageNumber - 1) * Model.PageSizeValue) + 1;
+    var lastResult = Math.Min(Model.TotalCount, Model.PageNumber * Model.PageSizeValue);
+    var pageStart = Math.Max(1, Model.PageNumber - 2);
+    var pageEnd = Math.Min(Model.TotalPages, Model.PageNumber + 2);
+    var statusMessage = StatusMessageText();
+    var dateFilterValue = Model.DateFilter?.ToString("yyyy-MM-dd") ?? "";
 }
 
+<div class="license-review-page">
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
-        <h1 class="h2 mb-1">License review</h1>
-        <p class="text-body-secondary mb-0">
-            All license applications, including requests still waiting for manager approval.
-        </p>
+        <h1 class="h2 mb-1">@T("licenseReview.title")</h1>
+        <p class="text-body-secondary mb-0">@T("licenseReview.help")</p>
     </div>
-    <span class="badge text-bg-secondary fs-6">@Model.Applications.Count requests</span>
+    <span class="badge app-status-badge app-status-badge-secondary fs-6">@F("licenseReview.requestCount", Model.TotalCount)</span>
 </div>
 
-@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+@if (!string.IsNullOrWhiteSpace(statusMessage))
 {
-    <div class="alert alert-info">@Model.StatusMessage</div>
+    <div class="alert alert-info" role="alert">@statusMessage</div>
 }
+
+<form method="get" class="card mb-4 license-review-filter-card">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-6 col-xl-4">
+                <label asp-for="Search" class="form-label">@T("licenseReview.searchLabel")</label>
+                <input asp-for="Search"
+                       class="form-control"
+                       placeholder="@T("licenseReview.searchPlaceholder")" />
+            </div>
+            <div class="col-md-6 col-xl-2">
+                <label asp-for="StatusFilter" class="form-label">@T("common.status")</label>
+                <select asp-for="StatusFilter" class="form-select">
+                    <option value="">@T("common.all")</option>
+                    <option value="AwaitingManager">@T("licenseStatus.awaitingManager")</option>
+                    <option value="AwaitingIT">@T("licenseStatus.awaitingIT")</option>
+                    <option value="Approved">@T("licenseStatus.approved")</option>
+                    <option value="PartiallyApproved">@T("licenseStatus.partiallyApproved")</option>
+                    <option value="Completed">@T("licenseStatus.completed")</option>
+                    <option value="ManagerRejected">@T("licenseStatus.managerRejected")</option>
+                    <option value="ITRejected">@T("licenseStatus.itRejected")</option>
+                </select>
+            </div>
+            <div class="col-md-6 col-xl-2">
+                <label asp-for="RequesterFilter" class="form-label">@T("licenseReview.requesterFilter")</label>
+                <input asp-for="RequesterFilter"
+                       class="form-control"
+                       placeholder="@T("licenseReview.requesterPlaceholder")" />
+            </div>
+            <div class="col-md-6 col-xl-2">
+                <label asp-for="LicenseFilter" class="form-label">@T("licenseReview.licenseFilter")</label>
+                <select asp-for="LicenseFilter" class="form-select">
+                    <option value="">@T("common.all")</option>
+                    @foreach (var license in Model.LicenseOptions)
+                    {
+                        <option value="@license">@license</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-6 col-xl-2">
+                <label asp-for="DateFilter" class="form-label">@T("licenseReview.dateFilter")</label>
+                <input asp-for="DateFilter"
+                       asp-format="{0:yyyy-MM-dd}"
+                       type="date"
+                       class="form-control" />
+            </div>
+            <div class="col-12 d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-secondary">@T("common.filter")</button>
+                <a asp-page="/LicenseRequests/ITReview" class="btn btn-outline-secondary">@T("common.clear")</a>
+            </div>
+        </div>
+    </div>
+</form>
 
 @if (Model.Applications.Count == 0)
 {
-    <div class="alert alert-secondary">No license applications found.</div>
+    <div class="alert alert-secondary" role="alert">@T("licenseReview.noApplications")</div>
 }
 else
 {
-    <div class="license-review-list border rounded overflow-hidden">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 text-body-secondary small">
+        <span>@F("licenseReview.resultCount", firstResult, lastResult, Model.TotalCount)</span>
+        <span>@F("licenseReview.page", Model.PageNumber, Model.TotalPages)</span>
+    </div>
+
+    <div class="accordion license-review-list" id="licenseReviewAccordion">
         @foreach (var application in Model.Applications)
         {
             var collapseId = $"license-request-{application.Id}";
             var licenseNames = string.Join(", ", application.Items.Select(x => x.Name));
-            var statusClass = application.Status switch
-            {
-                "AwaitingManager" => "text-bg-warning",
-                "AwaitingIT" => "text-bg-primary",
-                "Approved" => "text-bg-success",
-                "PartiallyApproved" => "text-bg-info",
-                "Completed" => "text-bg-success",
-                "ManagerRejected" or "ITRejected" => "text-bg-danger",
-                _ => "text-bg-secondary"
-            };
+            var badgeClass = StatusBadgeClass(application.Status);
+            var stripeClass = StatusStripeClass(application.Status);
+            var isOpen = Model.OpenId == application.Id;
 
-            <div class="license-review-entry border-bottom">
-                <button class="license-review-summary w-100 border-0 text-start"
-                        type="button"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#@collapseId"
-                        aria-expanded="false"
-                        aria-controls="@collapseId">
-                    <span class="license-review-id">#@application.Id</span>
-                    <span class="license-review-person text-truncate">@application.UserName</span>
-                    <span class="license-review-licenses text-truncate" title="@licenseNames">@licenseNames</span>
-                    <span class="license-review-date">@application.SubmittedAt.ToString("dd.MM.yyyy")</span>
-                    <span class="badge @statusClass license-review-status">@application.Status</span>
-                    <span class="license-review-chevron" aria-hidden="true">⌄</span>
-                </button>
+            <article class="license-review-entry card @stripeClass mb-2">
+                <h2 class="accordion-header" id="heading-@application.Id">
+                    <button class="accordion-button license-review-summary @(isOpen ? "" : "collapsed")"
+                            type="button"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#@collapseId"
+                            aria-expanded="@(isOpen ? "true" : "false")"
+                            aria-controls="@collapseId"
+                            aria-label="@F("licenseReview.openApplicationAria", application.Id)">
+                        <span class="license-review-id">#@application.Id</span>
+                        <span class="license-review-person text-truncate">@application.UserName</span>
+                        <span class="license-review-licenses text-truncate" title="@licenseNames">@licenseNames</span>
+                        <span class="license-review-status"><span class="badge @badgeClass">@StatusText(application.Status)</span></span>
+                        <span class="license-review-date">@application.SubmittedAt.ToString("dd.MM.yyyy")</span>
+                    </button>
+                </h2>
 
-                <div class="collapse" id="@collapseId">
-                    <div class="license-review-details border-top p-3 p-lg-4">
+                <div id="@collapseId"
+                     class="accordion-collapse collapse @(isOpen ? "show" : "")"
+                     aria-labelledby="heading-@application.Id"
+                     data-bs-parent="#licenseReviewAccordion">
+                    <div class="accordion-body license-review-details p-3 p-lg-4">
                         <div class="row g-3 mb-4">
                             <div class="col-md-6 col-xl-3">
-                                <div class="detail-label">Requester</div>
+                                <div class="detail-label">@T("licenseReview.requester")</div>
                                 <div class="fw-semibold">@application.UserName</div>
                                 <div class="small text-body-secondary text-break">@application.UserEmail</div>
                             </div>
                             <div class="col-md-6 col-xl-3">
-                                <div class="detail-label">Manager</div>
-                                <div>@application.ManagerName</div>
+                                <div class="detail-label">@T("licenseReview.manager")</div>
+                                <div class="fw-semibold">@application.ManagerName</div>
                                 @if (!string.IsNullOrWhiteSpace(application.ManagerDecision))
                                 {
-                                    <div class="small text-body-secondary">@application.ManagerDecision</div>
+                                    <div class="small text-body-secondary">@DecisionText(application.ManagerDecision)</div>
                                 }
                             </div>
                             <div class="col-md-6 col-xl-3">
-                                <div class="detail-label">Submitted</div>
+                                <div class="detail-label">@T("licenseReview.submitted")</div>
                                 <div>@application.SubmittedAt.ToString("dd.MM.yyyy HH:mm")</div>
                             </div>
                             <div class="col-md-6 col-xl-3">
-                                <div class="detail-label">Status</div>
-                                <span class="badge @statusClass">@application.Status</span>
+                                <div class="detail-label">@T("common.status")</div>
+                                <span class="badge @badgeClass">@StatusText(application.Status)</span>
                             </div>
                             <div class="col-12 col-xl-6">
-                                <div class="detail-label">Business reason</div>
+                                <div class="detail-label">@T("licenseReview.businessReason")</div>
                                 <div class="request-text">@application.BusinessReason</div>
                             </div>
                             <div class="col-12 col-xl-6">
-                                <div class="detail-label">Manager reason</div>
+                                <div class="detail-label">@T("licenseReview.managerReason")</div>
                                 <div class="request-text">
-                                    @(string.IsNullOrWhiteSpace(application.ManagerReason) ? "—" : application.ManagerReason)
+                                    @(string.IsNullOrWhiteSpace(application.ManagerReason)
+                                        ? T("common.notProvided")
+                                        : application.ManagerReason)
                                 </div>
                             </div>
                         </div>
 
+                        <div class="detail-label mb-2">@T("licenseReview.licenses")</div>
                         <div class="table-responsive">
                             <table class="table table-sm align-middle mb-0">
                                 <thead>
                                     <tr>
-                                        <th>License</th>
-                                        <th style="width: 10rem;">Status</th>
-                                        <th>IT reason</th>
-                                        <th class="text-end" style="width: 24rem;">Actions</th>
+                                        <th>@T("licenseReview.license")</th>
+                                        <th style="width: 11rem;">@T("common.status")</th>
+                                        <th>@T("licenseReview.itReason")</th>
+                                        <th class="text-end" style="min-width: 22rem;">@T("licenseReview.itActions")</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -107,8 +299,8 @@ else
                                 {
                                     <tr>
                                         <td class="fw-semibold">@item.Name</td>
-                                        <td>@item.Status</td>
-                                        <td>@item.Reason</td>
+                                        <td>@ItemStatusText(item.Status)</td>
+                                        <td>@(string.IsNullOrWhiteSpace(item.Reason) ? T("common.notProvided") : item.Reason)</td>
                                         <td class="text-end">
                                             @if (application.Status is "AwaitingIT" or "PartiallyApproved" && item.Status == "Pending")
                                             {
@@ -116,24 +308,37 @@ else
                                                     <form method="post" asp-page-handler="Approve">
                                                         <input type="hidden" name="applicationId" value="@application.Id" />
                                                         <input type="hidden" name="itemId" value="@item.Id" />
-                                                        <button class="btn btn-sm btn-success">Approve</button>
+                                                        <input type="hidden" asp-for="Search" />
+                                                        <input type="hidden" asp-for="StatusFilter" />
+                                                        <input type="hidden" asp-for="RequesterFilter" />
+                                                        <input type="hidden" asp-for="LicenseFilter" />
+                                                        <input type="hidden" name="DateFilter" value="@dateFilterValue" />
+                                                        <input type="hidden" asp-for="PageNumber" />
+                                                        <button class="btn btn-sm btn-success" type="submit">@T("licenseReview.approve")</button>
                                                     </form>
 
-                                                    <form method="post" asp-page-handler="Reject" class="d-flex gap-2">
+                                                    <form method="post" asp-page-handler="Reject" class="d-flex flex-wrap justify-content-end gap-2">
                                                         <input type="hidden" name="applicationId" value="@application.Id" />
                                                         <input type="hidden" name="itemId" value="@item.Id" />
+                                                        <input type="hidden" asp-for="Search" />
+                                                        <input type="hidden" asp-for="StatusFilter" />
+                                                        <input type="hidden" asp-for="RequesterFilter" />
+                                                        <input type="hidden" asp-for="LicenseFilter" />
+                                                        <input type="hidden" name="DateFilter" value="@dateFilterValue" />
+                                                        <input type="hidden" asp-for="PageNumber" />
+                                                        <label class="visually-hidden" for="DecisionReason-@item.Id">@T("licenseReview.rejectionReason")</label>
                                                         <input type="text"
+                                                               id="DecisionReason-@item.Id"
                                                                name="DecisionReason"
-                                                               class="form-control form-control-sm"
-                                                               placeholder="Required rejection reason"
-                                                               required />
-                                                        <button class="btn btn-sm btn-outline-danger">Reject</button>
+                                                               class="form-control form-control-sm license-reason-input"
+                                                               placeholder="@T("licenseReview.rejectionReasonPlaceholder")" />
+                                                        <button class="btn btn-sm btn-outline-danger" type="submit">@T("licenseReview.reject")</button>
                                                     </form>
                                                 </div>
                                             }
                                             else if (application.Status == "AwaitingManager")
                                             {
-                                                <span class="small text-body-secondary">Waiting for manager</span>
+                                                <span class="small text-body-secondary">@T("licenseReview.waitingForManager")</span>
                                             }
                                         </td>
                                     </tr>
@@ -147,106 +352,392 @@ else
                             <div class="d-flex justify-content-end mt-3">
                                 <form method="post" asp-page-handler="Complete">
                                     <input type="hidden" name="applicationId" value="@application.Id" />
-                                    <button class="btn btn-primary">Mark approved licenses completed</button>
+                                    <input type="hidden" asp-for="Search" />
+                                    <input type="hidden" asp-for="StatusFilter" />
+                                    <input type="hidden" asp-for="RequesterFilter" />
+                                    <input type="hidden" asp-for="LicenseFilter" />
+                                    <input type="hidden" name="DateFilter" value="@dateFilterValue" />
+                                    <input type="hidden" asp-for="PageNumber" />
+                                    <button class="btn btn-primary" type="submit">@T("licenseReview.complete")</button>
                                 </form>
                             </div>
                         }
                     </div>
                 </div>
-            </div>
+            </article>
         }
     </div>
+
+    @if (Model.TotalPages > 1)
+    {
+        <nav class="mt-4" aria-label="@T("licenseReview.title")">
+            <ul class="pagination flex-wrap mb-0">
+                <li class="page-item @(Model.PageNumber <= 1 ? "disabled" : "")">
+                    <a class="page-link"
+                       asp-page="/LicenseRequests/ITReview"
+                       asp-route-Search="@Model.Search"
+                       asp-route-StatusFilter="@Model.StatusFilter"
+                       asp-route-RequesterFilter="@Model.RequesterFilter"
+                       asp-route-LicenseFilter="@Model.LicenseFilter"
+                       asp-route-DateFilter="@dateFilterValue"
+                       asp-route-PageNumber="@(Model.PageNumber - 1)">@T("common.previous")</a>
+                </li>
+                @for (var pageNumber = pageStart; pageNumber <= pageEnd; pageNumber++)
+                {
+                    <li class="page-item @(pageNumber == Model.PageNumber ? "active" : "")">
+                        <a class="page-link"
+                           asp-page="/LicenseRequests/ITReview"
+                           asp-route-Search="@Model.Search"
+                           asp-route-StatusFilter="@Model.StatusFilter"
+                           asp-route-RequesterFilter="@Model.RequesterFilter"
+                           asp-route-LicenseFilter="@Model.LicenseFilter"
+                           asp-route-DateFilter="@dateFilterValue"
+                           asp-route-PageNumber="@(pageNumber)">@(pageNumber)</a>
+                    </li>
+                }
+                <li class="page-item @(Model.PageNumber >= Model.TotalPages ? "disabled" : "")">
+                    <a class="page-link"
+                       asp-page="/LicenseRequests/ITReview"
+                       asp-route-Search="@Model.Search"
+                       asp-route-StatusFilter="@Model.StatusFilter"
+                       asp-route-RequesterFilter="@Model.RequesterFilter"
+                       asp-route-LicenseFilter="@Model.LicenseFilter"
+                       asp-route-DateFilter="@dateFilterValue"
+                       asp-route-PageNumber="@(Model.PageNumber + 1)">@T("common.next")</a>
+                </li>
+            </ul>
+        </nav>
+    }
 }
 
+</div>
+
 <style>
-    .license-review-entry:last-child {
-        border-bottom: 0 !important;
+    /*
+       License Review owns its foreground/background pairs instead of relying on
+       Bootstrap 5.3 theme variables. This project uses Bootstrap 5.1, so explicit
+       component variables prevent a light surface from ever inheriting dark-mode
+       white text (and vice versa).
+    */
+    .license-review-page {
+        --license-review-surface: #ffffff;
+        --license-review-surface-alt: #f3f5f7;
+        --license-review-text: #212529;
+        --license-review-muted: #5b6470;
+        --license-review-border: #cbd1d8;
+        --license-review-input-bg: #ffffff;
+        --license-review-input-text: #212529;
+        color: var(--license-review-text);
     }
 
-    .license-review-summary {
+    [data-bs-theme="dark"] .license-review-page {
+        --license-review-surface: #1a232c;
+        --license-review-surface-alt: #222d37;
+        --license-review-text: #e8edf2;
+        --license-review-muted: #bdc7d1;
+        --license-review-border: #526170;
+        --license-review-input-bg: #111820;
+        --license-review-input-text: #e8edf2;
+    }
+
+    .license-review-page h1,
+    .license-review-page h2,
+    .license-review-page .form-label,
+    .license-review-page .fw-semibold {
+        color: var(--license-review-text) !important;
+    }
+
+    .license-review-page .text-body-secondary,
+    .license-review-page .text-muted,
+    .license-review-page .detail-label,
+    .license-review-page .license-review-licenses,
+    .license-review-page .license-review-date {
+        color: var(--license-review-muted) !important;
+    }
+
+    .license-review-filter-card,
+    .license-review-entry,
+    .license-review-page .accordion-item {
+        background-color: var(--license-review-surface) !important;
+        color: var(--license-review-text) !important;
+        border-color: var(--license-review-border) !important;
+    }
+
+    .license-review-filter-card .card-body,
+    .license-review-details,
+    .license-review-page .accordion-body {
+        background-color: var(--license-review-surface) !important;
+        color: var(--license-review-text) !important;
+    }
+
+    .license-review-page .form-control,
+    .license-review-page .form-select {
+        background-color: var(--license-review-input-bg) !important;
+        color: var(--license-review-input-text) !important;
+        border-color: var(--license-review-border) !important;
+    }
+
+    .license-review-page .form-control::placeholder {
+        color: var(--license-review-muted) !important;
+        opacity: 1;
+    }
+
+    .license-review-page .form-select option {
+        background-color: var(--license-review-input-bg);
+        color: var(--license-review-input-text);
+    }
+
+    .license-review-entry {
+        border-inline-start: .35rem solid var(--bs-secondary);
+        overflow: hidden;
+    }
+
+    .license-status-awaiting-manager {
+        border-inline-start-color: var(--bs-warning);
+    }
+
+    .license-status-awaiting-it {
+        border-inline-start-color: var(--bs-primary);
+    }
+
+    .license-status-approved {
+        border-inline-start-color: var(--bs-success);
+    }
+
+    .license-status-partial {
+        border-inline-start-color: var(--bs-info);
+    }
+
+    .license-status-rejected {
+        border-inline-start-color: var(--bs-danger);
+    }
+
+    .license-review-summary,
+    .license-review-page .accordion-button {
         display: grid;
-        grid-template-columns: 5rem minmax(10rem, 1.1fr) minmax(14rem, 2fr) 7rem 10rem 1.5rem;
+        grid-template-columns: 4.5rem minmax(10rem, 1.1fr) minmax(12rem, 1.8fr) minmax(10rem, auto) 7rem 1.25rem;
         align-items: center;
         gap: .75rem;
-        padding: .75rem 1rem;
-        background: var(--bs-body-bg);
-        color: var(--bs-body-color);
+        padding: .85rem 1rem;
+        background-color: var(--license-review-surface) !important;
+        color: var(--license-review-text) !important;
+        border-color: var(--license-review-border) !important;
+        box-shadow: none !important;
     }
 
+    .license-review-summary:not(.collapsed),
     .license-review-summary:hover,
-    .license-review-summary[aria-expanded="true"] {
-        background: var(--bs-tertiary-bg);
+    .license-review-summary:focus {
+        background-color: var(--license-review-surface-alt) !important;
+        color: var(--license-review-text) !important;
+        box-shadow: none !important;
+    }
+
+    .license-review-summary::after {
+        margin-left: 0;
+    }
+
+    [data-bs-theme="dark"] .license-review-summary::after {
+        filter: invert(1) grayscale(100%) brightness(180%);
+    }
+
+    .license-review-id,
+    .license-review-person {
+        color: var(--license-review-text) !important;
     }
 
     .license-review-id {
         font-weight: 700;
-        color: var(--bs-emphasis-color);
     }
 
     .license-review-person {
         font-weight: 600;
+        min-width: 0;
     }
 
     .license-review-licenses,
-    .license-review-date {
-        color: var(--bs-secondary-color);
-    }
-
     .license-review-status {
-        justify-self: start;
+        min-width: 0;
     }
 
-    .license-review-chevron {
-        font-size: 1.25rem;
-        line-height: 1;
-        transition: transform .15s ease;
-    }
-
-    .license-review-summary[aria-expanded="true"] .license-review-chevron {
-        transform: rotate(180deg);
+    .license-review-date {
+        white-space: nowrap;
     }
 
     .license-review-details {
-        background: var(--bs-tertiary-bg);
+        border-top: 1px solid var(--license-review-border) !important;
     }
 
     .detail-label {
-        margin-bottom: .2rem;
-        color: var(--bs-secondary-color);
         font-size: .75rem;
         font-weight: 700;
-        text-transform: uppercase;
         letter-spacing: .035em;
+        margin-bottom: .25rem;
+        text-transform: uppercase;
     }
 
     .request-text {
+        color: var(--license-review-text) !important;
         white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
+    .license-review-page .table {
+        color: var(--license-review-text) !important;
+        background-color: transparent !important;
+        border-color: var(--license-review-border) !important;
+    }
+
+    .license-review-page .table > :not(caption) > * > * {
+        color: var(--license-review-text) !important;
+        background-color: transparent !important;
+        border-color: var(--license-review-border) !important;
+    }
+
+    .license-review-page .table thead th {
+        color: var(--license-review-text) !important;
+        background-color: var(--license-review-surface-alt) !important;
+    }
+
+    .license-reason-input {
+        width: min(18rem, 100%);
+    }
+
+    /* Explicit badge pairs: no inherited foreground colour. */
+    .license-review-page .app-status-badge-primary {
+        color: #084298 !important;
+        background-color: #cfe2ff !important;
+        border-color: #9ec5fe !important;
+    }
+
+    .license-review-page .app-status-badge-secondary {
+        color: #41464b !important;
+        background-color: #e2e3e5 !important;
+        border-color: #c4c8cb !important;
+    }
+
+    .license-review-page .app-status-badge-success {
+        color: #0f5132 !important;
+        background-color: #d1e7dd !important;
+        border-color: #a3cfbb !important;
+    }
+
+    .license-review-page .app-status-badge-info {
+        color: #055160 !important;
+        background-color: #cff4fc !important;
+        border-color: #9eeaf9 !important;
+    }
+
+    .license-review-page .app-status-badge-warning {
+        color: #664d03 !important;
+        background-color: #fff3cd !important;
+        border-color: #ffecb5 !important;
+    }
+
+    .license-review-page .app-status-badge-danger {
+        color: #842029 !important;
+        background-color: #f8d7da !important;
+        border-color: #f1aeb5 !important;
+    }
+
+    [data-bs-theme="dark"] .license-review-page .app-status-badge-primary {
+        color: #d9eaff !important;
+        background-color: #183d66 !important;
+        border-color: #3676b8 !important;
+    }
+
+    [data-bs-theme="dark"] .license-review-page .app-status-badge-secondary {
+        color: #eef2f6 !important;
+        background-color: #344250 !important;
+        border-color: #657586 !important;
+    }
+
+    [data-bs-theme="dark"] .license-review-page .app-status-badge-success {
+        color: #d9f6e3 !important;
+        background-color: #183d29 !important;
+        border-color: #347a50 !important;
+    }
+
+    [data-bs-theme="dark"] .license-review-page .app-status-badge-info {
+        color: #d9f6ff !important;
+        background-color: #16414a !important;
+        border-color: #2e7d8b !important;
+    }
+
+    [data-bs-theme="dark"] .license-review-page .app-status-badge-warning {
+        color: #fff0c7 !important;
+        background-color: #4b3a12 !important;
+        border-color: #8b7028 !important;
+    }
+
+    [data-bs-theme="dark"] .license-review-page .app-status-badge-danger {
+        color: #ffd9dd !important;
+        background-color: #4c2027 !important;
+        border-color: #8f3c49 !important;
     }
 
     @@media (max-width: 991.98px) {
-        .license-review-summary {
-            grid-template-columns: 4.5rem minmax(0, 1fr) 9rem 1.5rem;
+        .license-review-summary,
+        .license-review-page .accordion-button {
+            grid-template-columns: 4rem minmax(0, 1fr) auto 1.25rem;
         }
 
-        .license-review-licenses,
+        .license-review-licenses {
+            grid-column: 2 / 4;
+            grid-row: 2;
+        }
+
+        .license-review-status {
+            grid-column: 3;
+            grid-row: 1;
+        }
+
         .license-review-date {
-            display: none;
+            grid-column: 2;
+            grid-row: 3;
+            font-size: .875rem;
+        }
+
+        .license-review-summary::after {
+            grid-column: 4;
+            grid-row: 1 / 4;
         }
     }
 
     @@media (max-width: 575.98px) {
-        .license-review-summary {
-            grid-template-columns: 4rem minmax(0, 1fr) 1.5rem;
+        .license-review-summary,
+        .license-review-page .accordion-button {
+            grid-template-columns: 3.5rem minmax(0, 1fr) 1.25rem;
+            gap: .4rem .6rem;
+            padding: .75rem;
         }
 
-        .license-review-status {
+        .license-review-person,
+        .license-review-licenses,
+        .license-review-status,
+        .license-review-date {
             grid-column: 2;
+        }
+
+        .license-review-person {
+            grid-row: 1;
+        }
+
+        .license-review-licenses {
             grid-row: 2;
         }
 
-        .license-review-chevron {
+        .license-review-status {
+            grid-row: 3;
+        }
+
+        .license-review-date {
+            grid-row: 4;
+        }
+
+        .license-review-summary::after {
             grid-column: 3;
-            grid-row: 1 / span 2;
+            grid-row: 1 / 5;
         }
     }
 </style>

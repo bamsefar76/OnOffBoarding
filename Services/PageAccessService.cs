@@ -83,6 +83,7 @@ public class PageAccessService
             "/REQUESTS/APPROVALS" => new[] { normalizedPagePath, "/Approvals" },
             "/REQUESTS/UPCOMING" => new[] { normalizedPagePath, "/UpcomingChanges" },
             "/REQUESTS/SUPERVISOR" => new[] { normalizedPagePath, "/Supervisor" },
+            "/LICENSEREQUESTS/INDEX" => new[] { normalizedPagePath, "/LicenseRequests" },
 
             // UserPendingChanges is a drill-down page from Supervisor and is still protected by
             // ObjectAccessService. Allow users with Supervisor page access to open the drill-down.

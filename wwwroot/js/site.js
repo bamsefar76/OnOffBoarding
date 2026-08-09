@@ -26,11 +26,19 @@
 
         const dark = theme === "dark";
         if (icon) icon.textContent = dark ? "☀" : "☾";
-        if (text) text.textContent = dark ? "Light mode" : "Dark mode";
+        if (text && button) {
+            text.textContent = dark
+                ? button.dataset.lightText
+                : button.dataset.darkText;
+        }
         if (button) {
-            const label = dark ? "Switch to light mode" : "Switch to dark mode";
-            button.setAttribute("aria-label", label);
-            button.setAttribute("title", label);
+            const label = dark
+                ? button.dataset.switchLightLabel
+                : button.dataset.switchDarkLabel;
+            if (label) {
+                button.setAttribute("aria-label", label);
+                button.setAttribute("title", label);
+            }
         }
     }
 

@@ -382,3 +382,22 @@ pre {
     animation-iteration-count: 1 !important;
   }
 }
+
+/*
+  Bootstrap 5.1-compatible status badges.
+  The application uses a custom light/dark theme, so these badges avoid the
+  Bootstrap 5.3-only text-bg-* utilities and keep readable text in both themes.
+*/
+.app-status-badge {
+  --app-status-rgb: var(--bs-secondary-rgb);
+  color: var(--bs-body-color) !important;
+  background-color: rgba(var(--app-status-rgb), .18) !important;
+  border: 1px solid rgba(var(--app-status-rgb), .55);
+}
+
+.app-status-badge-primary { --app-status-rgb: var(--bs-primary-rgb); }
+.app-status-badge-secondary { --app-status-rgb: var(--bs-secondary-rgb); }
+.app-status-badge-success { --app-status-rgb: var(--bs-success-rgb); }
+.app-status-badge-info { --app-status-rgb: var(--bs-info-rgb); }
+.app-status-badge-warning { --app-status-rgb: var(--bs-warning-rgb); }
+.app-status-badge-danger { --app-status-rgb: var(--bs-danger-rgb); }

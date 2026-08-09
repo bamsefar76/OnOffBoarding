@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -19,33 +18,56 @@ public sealed class ManagerReviewModel : PageModel
         _emails = emails;
     }
 
-    [BindProperty(SupportsGet = true)] public long Id { get; set; }
-    [BindProperty, Required, StringLength(2000)] public string DecisionReason { get; set; } = "";
-    [TempData] public string? StatusMessage { get; set; }
+    [BindProperty(SupportsGet = true)]
+    public long Id { get; set; }
+
+    [BindProperty]
+    public string DecisionReason { get; set; } = "";
+
+    [TempData]
+    public string? StatusMessageKey { get; set; }
+
+    public string? ValidationMessageKey { get; private set; }
     public ApplicationDetails? Application { get; private set; }
 
-    public async Task<IActionResult> OnGetAsync() => await LoadAuthorizedAsync() ? Page() : Forbid();
-    public Task<IActionResult> OnPostApproveAsync() => ManagerDecisionAsync("Approved", "AwaitingIT");
-    public Task<IActionResult> OnPostRejectAsync() => ManagerDecisionAsync("Rejected", "ManagerRejected");
+    public async Task<IActionResult> OnGetAsync() =>
+        await LoadAuthorizedAsync() ? Page() : Forbid();
+
+    public Task<IActionResult> OnPostApproveAsync() =>
+        ManagerDecisionAsync("Approved", "AwaitingIT");
+
+    public Task<IActionResult> OnPostRejectAsync() =>
+        ManagerDecisionAsync("Rejected", "ManagerRejected");
 
     private async Task<IActionResult> ManagerDecisionAsync(string decision, string newStatus)
     {
         DecisionReason = DecisionReason?.Trim() ?? "";
+
         if (string.IsNullOrWhiteSpace(DecisionReason))
         {
-            ModelState.AddModelError(nameof(DecisionReason), "A reason is required for both approval and rejection.");
+            ValidationMessageKey = "managerLicenseReview.validation.reasonRequired";
+            return await LoadAuthorizedAsync() ? Page() : Forbid();
+        }
+
+        if (DecisionReason.Length > 2000)
+        {
+            ValidationMessageKey = "managerLicenseReview.validation.reasonTooLong";
             return await LoadAuthorizedAsync() ? Page() : Forbid();
         }
 
         var currentSam = AccessScopeService.ExtractSamAccountName(User.Identity?.Name);
         await using var connection = await _connections.OpenAsync(HttpContext.RequestAborted);
-        await using var transaction = (SqlTransaction)await connection.BeginTransactionAsync(HttpContext.RequestAborted);
+        await using var transaction =
+            (SqlTransaction)await connection.BeginTransactionAsync(HttpContext.RequestAborted);
 
         try
         {
             Application = await LoadApplicationAsync(connection, transaction, Id);
-            if (Application is null || !string.Equals(Application.ManagerSam, currentSam, StringComparison.OrdinalIgnoreCase))
+            if (Application is null ||
+                !string.Equals(Application.ManagerSam, currentSam, StringComparison.OrdinalIgnoreCase))
+            {
                 return Forbid();
+            }
 
             await using var update = connection.CreateCommand();
             update.Transaction = transaction;
@@ -61,29 +83,46 @@ WHERE LicenseApplicationId=@Id
             update.Parameters.AddRequiredNVarChar("@Status", newStatus, 40);
             update.Parameters.AddRequiredNVarChar("@Decision", decision, 20);
             update.Parameters.AddRequiredNVarChar("@Reason", DecisionReason, 2000);
-            update.Parameters.AddRequiredNVarChar("@ChangedBy", User.Identity?.Name ?? currentSam, 300);
+            update.Parameters.AddRequiredNVarChar(
+                "@ChangedBy",
+                User.Identity?.Name ?? currentSam,
+                300);
             update.Parameters.AddBigInt("@Id", Id);
 
             if (await update.ExecuteNonQueryAsync(HttpContext.RequestAborted) != 1)
                 throw new InvalidOperationException("This application has already been decided.");
 
-            var body = "<p>Hello " + System.Net.WebUtility.HtmlEncode(Application.UserName) +
-                ",</p><p>Your manager decision is <strong>" + decision + "</strong>.</p><p>" +
-                Application.LicenseHtml + "</p><p><strong>Reason</strong><br />" +
-                System.Net.WebUtility.HtmlEncode(DecisionReason) + "</p>";
+            var licenseText = string.Join(
+                Environment.NewLine,
+                Application.Items.Select(x => "- " + x.Name));
 
-            await _emails.QueueAsync(
+            await _emails.QueueTemplateAsync(
                 connection,
                 transaction,
-                decision == "Approved" ? "LicenseRequestManagerApproved" : "LicenseRequestManagerRejected",
+                decision == "Approved"
+                    ? "LicenseRequestManagerApproved"
+                    : "LicenseRequestManagerRejected",
                 Application.UserEmail,
                 Application.UserName,
-                $"License application {Id}: {decision}",
-                body,
+                new Dictionary<string, string?>
+                {
+                    ["ApplicationId"] = Id.ToString(),
+                    ["RequesterName"] = Application.UserName,
+                    ["ManagerName"] = Application.ManagerName,
+                    ["ManagerDecision"] = decision,
+                    ["ManagerReason"] = DecisionReason,
+                    ["LicenseList"] = licenseText
+                },
+                new Dictionary<string, string?>
+                {
+                    ["LicenseList"] = Application.LicenseHtml
+                },
                 HttpContext.RequestAborted);
 
             await transaction.CommitAsync(HttpContext.RequestAborted);
-            StatusMessage = decision == "Approved" ? "Approved and sent to IT." : "Application rejected.";
+            StatusMessageKey = decision == "Approved"
+                ? "managerLicenseReview.message.approved"
+                : "managerLicenseReview.message.rejected";
             return RedirectToPage(new { id = Id });
         }
         catch
@@ -98,10 +137,15 @@ WHERE LicenseApplicationId=@Id
         var currentSam = AccessScopeService.ExtractSamAccountName(User.Identity?.Name);
         await using var connection = await _connections.OpenAsync(HttpContext.RequestAborted);
         Application = await LoadApplicationAsync(connection, null, Id);
-        return Application is not null && string.Equals(Application.ManagerSam, currentSam, StringComparison.OrdinalIgnoreCase);
+
+        return Application is not null &&
+            string.Equals(Application.ManagerSam, currentSam, StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<ApplicationDetails?> LoadApplicationAsync(SqlConnection connection, SqlTransaction? transaction, long id)
+    private async Task<ApplicationDetails?> LoadApplicationAsync(
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        long id)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -131,6 +175,7 @@ ORDER BY product.Name;";
 
         ApplicationDetails? result = null;
         await using var reader = await command.ExecuteReaderAsync(HttpContext.RequestAborted);
+
         while (await reader.ReadAsync(HttpContext.RequestAborted))
         {
             result ??= new ApplicationDetails
@@ -146,6 +191,7 @@ ORDER BY product.Name;";
                 ManagerReason = Get(reader, 8),
                 SubmittedAt = reader.GetDateTime(9)
             };
+
             result.Items.Add(new ItemDetails
             {
                 Id = reader.GetInt64(10),
@@ -154,6 +200,7 @@ ORDER BY product.Name;";
                 Reason = Get(reader, 13)
             });
         }
+
         return result;
     }
 
@@ -173,7 +220,9 @@ ORDER BY product.Name;";
         public string ManagerReason { get; init; } = "";
         public DateTime SubmittedAt { get; init; }
         public List<ItemDetails> Items { get; } = new();
-        public string LicenseHtml => string.Join("<br />", Items.Select(x => "&#8226; " + System.Net.WebUtility.HtmlEncode(x.Name)));
+        public string LicenseHtml => string.Join(
+            "<br />",
+            Items.Select(x => "&#8226; " + System.Net.WebUtility.HtmlEncode(x.Name)));
     }
 
     public sealed class ItemDetails

@@ -1,193 +1,300 @@
-﻿@page
+@page
 @model UserChangeQueueWeb.Pages.LicenseRequests.IndexModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
 @{
-    ViewData["Title"] = "License applications";
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.status"] = "Status",
+        ["common.notProvided"] = "Not provided",
+        ["licenseRequests.title"] = "License applications",
+        ["licenseRequests.help"] = "Request one or more licenses and follow the approval process.",
+        ["licenseRequests.requestedFor"] = "Requested for",
+        ["licenseRequests.manager"] = "Manager",
+        ["licenseRequests.requestLicenses"] = "Request licenses",
+        ["licenseRequests.noLicenses"] = "No licenses are currently available for request.",
+        ["licenseRequests.level"] = "Level",
+        ["licenseRequests.businessReason"] = "Business reason",
+        ["licenseRequests.submit"] = "Submit to manager",
+        ["licenseRequests.myRequests"] = "My license requests",
+        ["licenseRequests.noApplications"] = "No applications found.",
+        ["licenseRequests.applicationNumber"] = "Application #{0}",
+        ["licenseRequests.licenses"] = "Licenses",
+        ["licenseRequests.submitted"] = "Submitted",
+        ["licenseRequests.managerDecision"] = "Manager decision",
+        ["licenseRequests.managerReason"] = "Manager reason",
+        ["licenseRequests.message.submitted"] = "Application {0} was sent to your manager.",
+        ["licenseRequests.validation.userNotFound"] = "Your user record could not be found.",
+        ["licenseRequests.validation.managerMissing"] = "Your manager or manager email address is missing.",
+        ["licenseRequests.validation.selectLicense"] = "Select at least one license.",
+        ["licenseRequests.validation.unavailableLicense"] = "One or more selected licenses are unavailable.",
+        ["licenseRequests.validation.duplicateFamily"] = "Select only one license from product family '{0}'.",
+        ["licenseRequests.validation.businessReasonRequired"] = "Business reason is required.",
+        ["licenseRequests.validation.businessReasonTooLong"] = "Business reason cannot be longer than 2000 characters.",
+        ["licenseRequests.error.publicBaseUrlMissing"] = "The public application URL is not configured. Contact IT.",
+        ["licenseRequests.error.publicBaseUrlInvalid"] = "The configured public application URL is invalid. Contact IT.",
+        ["licenseRequests.error.submitFailed"] = "The license application could not be submitted.",
+        ["licenseStatus.awaitingManager"] = "Awaiting manager",
+        ["licenseStatus.awaitingIT"] = "Awaiting IT",
+        ["licenseStatus.approved"] = "Approved",
+        ["licenseStatus.partiallyApproved"] = "Partially approved",
+        ["licenseStatus.completed"] = "Completed",
+        ["licenseStatus.managerRejected"] = "Rejected by manager",
+        ["licenseStatus.itRejected"] = "Rejected by IT",
+        ["licenseDecision.approved"] = "Approved",
+        ["licenseDecision.rejected"] = "Rejected"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    ViewData["Title"] = uiText.T("licenseRequests.title", textFallbacks["licenseRequests.title"]);
+
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    string F(string key, params object[] args) =>
+        string.Format(uiText.T(key, textFallbacks[key]), args);
+
+    string StatusText(string status) => status switch
+    {
+        "AwaitingManager" => T("licenseStatus.awaitingManager"),
+        "AwaitingIT" => T("licenseStatus.awaitingIT"),
+        "Approved" => T("licenseStatus.approved"),
+        "PartiallyApproved" => T("licenseStatus.partiallyApproved"),
+        "Completed" => T("licenseStatus.completed"),
+        "ManagerRejected" => T("licenseStatus.managerRejected"),
+        "ITRejected" => T("licenseStatus.itRejected"),
+        _ => status
+    };
+
+    string DecisionText(string decision) => decision switch
+    {
+        "Approved" => T("licenseDecision.approved"),
+        "Rejected" => T("licenseDecision.rejected"),
+        _ => decision
+    };
+
+    string StatusBadgeClass(string status) => status switch
+    {
+        "AwaitingManager" => "app-status-badge app-status-badge-warning",
+        "AwaitingIT" => "app-status-badge app-status-badge-primary",
+        "Approved" or "Completed" => "app-status-badge app-status-badge-success",
+        "PartiallyApproved" => "app-status-badge app-status-badge-info",
+        "ManagerRejected" or "ITRejected" => "app-status-badge app-status-badge-danger",
+        _ => "app-status-badge app-status-badge-secondary"
+    };
+
+    string StatusStripeClass(string status) => status switch
+    {
+        "AwaitingManager" => "license-request-awaiting-manager",
+        "AwaitingIT" => "license-request-awaiting-it",
+        "Approved" or "Completed" => "license-request-approved",
+        "PartiallyApproved" => "license-request-partial",
+        "ManagerRejected" or "ITRejected" => "license-request-rejected",
+        _ => "license-request-other"
+    };
+
+    string ValidationText(UserChangeQueueWeb.Pages.LicenseRequests.IndexModel.ValidationIssue issue) => issue.Key switch
+    {
+        "licenseRequests.validation.userNotFound" => T("licenseRequests.validation.userNotFound"),
+        "licenseRequests.validation.managerMissing" => T("licenseRequests.validation.managerMissing"),
+        "licenseRequests.validation.selectLicense" => T("licenseRequests.validation.selectLicense"),
+        "licenseRequests.validation.unavailableLicense" => T("licenseRequests.validation.unavailableLicense"),
+        "licenseRequests.validation.duplicateFamily" => F("licenseRequests.validation.duplicateFamily", issue.Argument ?? ""),
+        "licenseRequests.validation.businessReasonRequired" => T("licenseRequests.validation.businessReasonRequired"),
+        "licenseRequests.validation.businessReasonTooLong" => T("licenseRequests.validation.businessReasonTooLong"),
+        _ => ""
+    };
+
+    var statusMessage = Model.StatusMessageKey switch
+    {
+        "licenseRequests.message.submitted" => F("licenseRequests.message.submitted", Model.StatusMessageArgument ?? ""),
+        _ => ""
+    };
+
+    var errorMessage = Model.ErrorMessageKey switch
+    {
+        "licenseRequests.error.publicBaseUrlMissing" => T("licenseRequests.error.publicBaseUrlMissing"),
+        "licenseRequests.error.publicBaseUrlInvalid" => T("licenseRequests.error.publicBaseUrlInvalid"),
+        "licenseRequests.error.submitFailed" => T("licenseRequests.error.submitFailed"),
+        _ => ""
+    };
 }
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
-        <h1 class="h2 mb-1">License applications</h1>
-        <p class="text-body-secondary mb-0">
-            Request one or more licenses and follow the approval process.
-        </p>
+        <h1 class="h2 mb-1">@T("licenseRequests.title")</h1>
+        <p class="text-body-secondary mb-0">@T("licenseRequests.help")</p>
     </div>
 </div>
 
-@if (!string.IsNullOrWhiteSpace(Model.StatusMessage))
+@if (!string.IsNullOrWhiteSpace(statusMessage))
 {
-    <div class="alert alert-success">@Model.StatusMessage</div>
+    <div class="alert alert-success" role="alert">@statusMessage</div>
 }
 
-@if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+@if (!string.IsNullOrWhiteSpace(errorMessage))
 {
-    <div class="alert alert-danger">@Model.ErrorMessage</div>
+    <div class="alert alert-danger" role="alert">@errorMessage</div>
 }
 
-<div asp-validation-summary="All"
-     class="text-danger mb-3"></div>
+@if (Model.ValidationIssues.Count > 0)
+{
+    <div class="alert alert-danger" role="alert">
+        <ul class="mb-0">
+            @foreach (var issue in Model.ValidationIssues)
+            {
+                var validationText = ValidationText(issue);
+                if (!string.IsNullOrWhiteSpace(validationText))
+                {
+                    <li>@validationText</li>
+                }
+            }
+        </ul>
+    </div>
+}
 
 @if (Model.CurrentUser is not null)
 {
     <div class="card mb-4">
         <div class="card-body">
-            <strong>Requested for:</strong>
-            @Model.CurrentUser.DisplayName
-            <br />
-            <strong>Manager:</strong>
-            @Model.CurrentUser.ManagerName
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="license-request-label">@T("licenseRequests.requestedFor")</div>
+                    <div class="fw-semibold">@Model.CurrentUser.DisplayName</div>
+                </div>
+                <div class="col-md-6">
+                    <div class="license-request-label">@T("licenseRequests.manager")</div>
+                    <div class="fw-semibold">@Model.CurrentUser.ManagerName</div>
+                </div>
+            </div>
         </div>
     </div>
 }
 
-<section id="new-license-request"
-         class="scroll-margin-top">
-    <h2 class="h4 mb-3">Request licenses</h2>
+<section id="new-license-request" class="scroll-margin-top">
+    <h2 class="h4 mb-3">@T("licenseRequests.requestLicenses")</h2>
 
-    <form method="post"
-          asp-page-handler="Submit">
+    <form method="post" asp-page-handler="Submit">
+        @if (Model.Licenses.Count == 0)
+        {
+            <div class="alert alert-secondary">@T("licenseRequests.noLicenses")</div>
+        }
+        else
+        {
+            <div class="row g-3 mb-4">
+                @foreach (var license in Model.Licenses)
+                {
+                    var id = $"license-{license.Id}";
 
-        <div class="row g-3 mb-4">
-            @foreach (var license in Model.Licenses)
-            {
-                var id = $"license-{license.Id}";
+                    <div class="col-md-6 col-xl-4">
+                        <div class="card h-100 license-card">
+                            <div class="card-body">
+                                <div class="form-check">
+                                    <input class="form-check-input license-box"
+                                           type="checkbox"
+                                           name="SelectedLicenseIds"
+                                           value="@license.Id"
+                                           id="@id"
+                                           data-family="@license.ProductFamily"
+                                           checked="@Model.SelectedLicenseIds.Contains(license.Id)" />
 
-                <div class="col-md-6 col-xl-4">
-                    <div class="card h-100 license-card">
-                        <div class="card-body">
-                            <div class="form-check">
-                                <input class="form-check-input license-box"
-                                       type="checkbox"
-                                       name="SelectedLicenseIds"
-                                       value="@license.Id"
-                                       id="@id"
-                                       data-family="@license.ProductFamily"
-                                       checked="@Model.SelectedLicenseIds.Contains(license.Id)" />
+                                    <label class="form-check-label fw-semibold" for="@id">
+                                        @license.Name
+                                    </label>
+                                </div>
 
-                                <label class="form-check-label fw-semibold"
-                                       for="@id">
-                                    @license.Name
-                                </label>
+                                @if (!string.IsNullOrWhiteSpace(license.Description))
+                                {
+                                    <div class="small text-body-secondary mt-2">@license.Description</div>
+                                }
+
+                                @if (!string.IsNullOrWhiteSpace(license.ProductFamily))
+                                {
+                                    <div class="small text-body-secondary mt-2">
+                                        @license.ProductFamily
+                                        @if (license.LicenseLevel.HasValue)
+                                        {
+                                            <span> · @T("licenseRequests.level") @license.LicenseLevel</span>
+                                        }
+                                    </div>
+                                }
                             </div>
-
-                            @if (!string.IsNullOrWhiteSpace(license.Description))
-                            {
-                                <div class="small text-body-secondary mt-2">
-                                    @license.Description
-                                </div>
-                            }
-
-                            @if (!string.IsNullOrWhiteSpace(license.ProductFamily))
-                            {
-                                <div class="small text-body-secondary mt-2">
-                                    @license.ProductFamily
-                                    @if (license.LicenseLevel.HasValue)
-                                    {
-                                        <span>
-                                            · Level @license.LicenseLevel
-                                        </span>
-                                    }
-                                </div>
-                            }
                         </div>
                     </div>
-                </div>
-            }
-        </div>
-
-        <span asp-validation-for="SelectedLicenseIds"
-              class="text-danger"></span>
+                }
+            </div>
+        }
 
         <div class="mb-3">
-            <label asp-for="BusinessReason"
-                   class="form-label">
-                Business reason
-            </label>
-
+            <label asp-for="BusinessReason" class="form-label">@T("licenseRequests.businessReason")</label>
             <textarea asp-for="BusinessReason"
                       class="form-control"
                       rows="5"
-                      maxlength="2000"
-                      required></textarea>
-
-            <span asp-validation-for="BusinessReason"
-                  class="text-danger"></span>
+                      maxlength="2000"></textarea>
         </div>
 
-        <button class="btn btn-primary"
-                type="submit">
-            Submit to manager
+        <button class="btn btn-primary" type="submit" disabled="@(Model.Licenses.Count == 0)">
+            @T("licenseRequests.submit")
         </button>
     </form>
 </section>
 
 <hr class="my-5" />
 
-<section id="my-license-applications"
-         class="scroll-margin-top">
-
-    <h2 class="h4">My license requests</h2>
+<section id="my-license-applications" class="scroll-margin-top">
+    <h2 class="h4 mb-3">@T("licenseRequests.myRequests")</h2>
 
     @if (Model.MyApplications.Count == 0)
     {
-        <div class="alert alert-secondary">
-            No applications found.
-        </div>
+        <div class="alert alert-secondary">@T("licenseRequests.noApplications")</div>
     }
     else
     {
         <div class="vstack gap-3">
             @foreach (var application in Model.MyApplications)
             {
-                <article class="card">
-                    <div class="card-body">
+                var badgeClass = StatusBadgeClass(application.Status);
+                var stripeClass = StatusStripeClass(application.Status);
 
-                        <div class="d-flex flex-wrap justify-content-between gap-2">
-                            <h3 class="h5">
-                                Application #@application.Id
-                            </h3>
-
-                            <span class="badge text-bg-secondary">
-                                @application.Status
-                            </span>
+                <article class="card license-request-history-card @stripeClass">
+                    <div class="card-body p-3 p-lg-4">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                            <h3 class="h5 mb-0">@F("licenseRequests.applicationNumber", application.Id)</h3>
+                            <span class="badge @badgeClass">@StatusText(application.Status)</span>
                         </div>
 
-                        <dl class="row mb-0">
-                            <dt class="col-sm-3">Licenses</dt>
-                            <dd class="col-sm-9">
-                                @string.Join(
-                                    ", ",
-                                    application.Items.Select(x => x.Name))
-                            </dd>
+                        <div class="row g-3">
+                            <div class="col-lg-6">
+                                <div class="license-request-label">@T("licenseRequests.licenses")</div>
+                                <div>@string.Join(", ", application.Items.Select(x => x.Name))</div>
+                            </div>
+                            <div class="col-lg-3">
+                                <div class="license-request-label">@T("licenseRequests.submitted")</div>
+                                <div>@application.SubmittedAt.ToString("dd.MM.yyyy HH:mm")</div>
+                            </div>
+                            <div class="col-lg-3">
+                                <div class="license-request-label">@T("common.status")</div>
+                                <span class="badge @badgeClass">@StatusText(application.Status)</span>
+                            </div>
+                            <div class="col-12">
+                                <div class="license-request-label">@T("licenseRequests.businessReason")</div>
+                                <div class="license-request-text">@application.BusinessReason</div>
+                            </div>
 
-                            <dt class="col-sm-3">Submitted</dt>
-                            <dd class="col-sm-9">
-                                @application.SubmittedAt.ToString(
-                                    "dd.MM.yyyy HH:mm")
-                            </dd>
-
-                            <dt class="col-sm-3">Business reason</dt>
-                            <dd class="col-sm-9">
-                                @application.BusinessReason
-                            </dd>
-
-                            @if (!string.IsNullOrWhiteSpace(
-                                    application.ManagerDecision))
+                            @if (!string.IsNullOrWhiteSpace(application.ManagerDecision))
                             {
-                                <dt class="col-sm-3">
-                                    Manager decision
-                                </dt>
-                                <dd class="col-sm-9">
-                                    @application.ManagerDecision
-                                </dd>
-
-                                <dt class="col-sm-3">
-                                    Manager reason
-                                </dt>
-                                <dd class="col-sm-9">
-                                    @application.ManagerReason
-                                </dd>
+                                <div class="col-md-4">
+                                    <div class="license-request-label">@T("licenseRequests.managerDecision")</div>
+                                    <div>@DecisionText(application.ManagerDecision)</div>
+                                </div>
+                                <div class="col-md-8">
+                                    <div class="license-request-label">@T("licenseRequests.managerReason")</div>
+                                    <div class="license-request-text">
+                                        @(string.IsNullOrWhiteSpace(application.ManagerReason)
+                                            ? T("common.notProvided")
+                                            : application.ManagerReason)
+                                    </div>
+                                </div>
                             }
-                        </dl>
+                        </div>
                     </div>
                 </article>
             }
@@ -199,46 +306,71 @@
     .scroll-margin-top {
         scroll-margin-top: 5rem;
     }
+
+    .license-request-label {
+        color: var(--app-muted-color);
+        font-size: .75rem;
+        font-weight: 700;
+        letter-spacing: .035em;
+        margin-bottom: .25rem;
+        text-transform: uppercase;
+    }
+
+    .license-request-text {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
+    .license-request-history-card {
+        border-inline-start: .35rem solid var(--bs-secondary);
+    }
+
+    .license-request-awaiting-manager {
+        border-inline-start-color: var(--bs-warning);
+    }
+
+    .license-request-awaiting-it {
+        border-inline-start-color: var(--bs-primary);
+    }
+
+    .license-request-approved {
+        border-inline-start-color: var(--bs-success);
+    }
+
+    .license-request-partial {
+        border-inline-start-color: var(--bs-info);
+    }
+
+    .license-request-rejected {
+        border-inline-start-color: var(--bs-danger);
+    }
 </style>
 
 @section Scripts {
 <script>
 (() => {
-    const boxes =
-        [...document.querySelectorAll(".license-box")];
+    const boxes = [...document.querySelectorAll(".license-box")];
 
     function refresh() {
-        const selectedFamilies =
-            new Set(
-                boxes
-                    .filter(
-                        x => x.checked
-                             && x.dataset.family)
-                    .map(
-                        x => x.dataset.family)
-            );
+        const selectedFamilies = new Set(
+            boxes
+                .filter(x => x.checked && x.dataset.family)
+                .map(x => x.dataset.family)
+        );
 
         for (const box of boxes) {
-            const disabled =
-                box.dataset.family
-                && selectedFamilies.has(
-                    box.dataset.family)
+            const disabled = box.dataset.family
+                && selectedFamilies.has(box.dataset.family)
                 && !box.checked;
 
             box.disabled = disabled;
 
             box.closest(".license-card")
-                ?.classList.toggle(
-                    "opacity-50",
-                    disabled);
+                ?.classList.toggle("opacity-50", disabled);
         }
     }
 
-    boxes.forEach(
-        x => x.addEventListener(
-            "change",
-            refresh));
-
+    boxes.forEach(x => x.addEventListener("change", refresh));
     refresh();
 })();
 </script>
