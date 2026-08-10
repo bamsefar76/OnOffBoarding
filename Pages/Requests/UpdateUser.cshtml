@@ -231,15 +231,17 @@
                 <div>
                     <label>@T("field.departmentProject")</label><br />
                     <select asp-for="Department" id="departmentSelect" style="width:100%;">
-                        <option value="" data-company="">@T("select.project")</option>
+                        <option value="" data-company="" data-project-number="">@T("select.project")</option>
                         @foreach (var project in Model.Projects)
                         {
                             <option value="@project.ProjectName"
-                                    data-company="@project.Company">
+                                    data-company="@project.Company"
+                                    data-project-number="@project.ProjectNumber">
                                 @project.ProjectName (@project.ProjectNumber)
                             </option>
                         }
                     </select>
+                    <input asp-for="ProjectNumber" type="hidden" id="projectNumberInput" />
                 </div>
             </div>
 
@@ -593,6 +595,20 @@
         }
     }
 
+    function syncProjectNumber() {
+        const departmentSelect = document.getElementById("departmentSelect");
+        const projectNumberInput = document.getElementById("projectNumberInput");
+
+        if (!departmentSelect || !projectNumberInput) {
+            return;
+        }
+
+        const selectedOption = departmentSelect.options[departmentSelect.selectedIndex];
+        projectNumberInput.value = selectedOption
+            ? (selectedOption.getAttribute("data-project-number") || "")
+            : "";
+    }
+
     function filterProjectsByCompany() {
         const domainSelect = document.getElementById("domainSelect");
         const departmentSelect = document.getElementById("departmentSelect");
@@ -622,6 +638,8 @@
         if (selectedDepartmentOption && selectedDepartmentOption.hidden) {
             departmentSelect.value = "";
         }
+
+        syncProjectNumber();
     }
 
     function updateOfficeLicenseFromTitle() {
@@ -679,6 +697,7 @@
         updateDomainFields();
         filterByDomain();
         filterProjectsByCompany();
+        syncProjectNumber();
         updateOfficeLicenseFromTitle();
         updateEndDateVisibility();
     });
@@ -686,6 +705,7 @@
     document.getElementById("domainSelect")?.addEventListener("change", filterByDomain);
     document.getElementById("domainSelect")?.addEventListener("change", updateDomainFields);
     document.getElementById("domainSelect")?.addEventListener("change", filterProjectsByCompany);
+    document.getElementById("departmentSelect")?.addEventListener("change", syncProjectNumber);
     document.getElementById("employeeTypeSelect")?.addEventListener("change", updateEndDateVisibility);
     document.getElementById("titleSelect")?.addEventListener("change", updateOfficeLicenseFromTitle);
 </script>

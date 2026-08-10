@@ -401,3 +401,72 @@ pre {
 .app-status-badge-info { --app-status-rgb: var(--bs-info-rgb); }
 .app-status-badge-warning { --app-status-rgb: var(--bs-warning-rgb); }
 .app-status-badge-danger { --app-status-rgb: var(--bs-danger-rgb); }
+
+/* Global sortable data tables */
+.app-sortable-table th[data-sortable-column="true"] {
+  padding: 0;
+  vertical-align: middle;
+}
+
+.app-table-sort-button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  width: 100%;
+  min-height: 2.1rem;
+  margin: 0;
+  padding: .5rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.table-sm .app-table-sort-button {
+  min-height: 1.75rem;
+  padding: .25rem;
+}
+
+.app-table-sort-button::after {
+  content: "↕";
+  flex: 0 0 auto;
+  margin-left: auto;
+  opacity: .45;
+  font-size: .8em;
+  line-height: 1;
+}
+
+th[aria-sort="ascending"] > .app-table-sort-button::after {
+  content: "↑";
+  opacity: 1;
+}
+
+th[aria-sort="descending"] > .app-table-sort-button::after {
+  content: "↓";
+  opacity: 1;
+}
+
+th.text-end > .app-table-sort-button {
+  justify-content: flex-end;
+  text-align: right;
+}
+
+th.text-end > .app-table-sort-button::after {
+  margin-left: .15rem;
+}
+
+.app-table-sort-button:hover,
+.app-table-sort-button:focus-visible {
+  background-color: var(--app-subtle-bg);
+  color: var(--bs-body-color);
+}
+
+.app-table-sort-button:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: -2px;
+}

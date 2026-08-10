@@ -364,6 +364,7 @@
                                                name="SelectedLicenseIds"
                                                value="@license.Id"
                                                id="assignmentLicense_@license.Id"
+                                               data-license-family="@license.ProductFamily"
                                                checked="@Model.SelectedLicenseIds.Contains(license.Id)" />
                                         <label class="form-check-label w-100" for="assignmentLicense_@license.Id">
                                             <strong class="d-block">@license.Name</strong>
@@ -471,6 +472,7 @@
             const computerTypeSelect = document.getElementById('computerTypeSelect');
             const accessCardCheckbox = document.getElementById('accessCardCheckbox');
             const accessCardGroupsPanel = document.getElementById('accessCardGroupsPanel');
+            const licenseCheckboxes = [...document.querySelectorAll('.assignment-license-checkbox')];
             const initialProjectId = '@(Model.ProjectId?.ToString() ?? "")';
             const initialManager = '@(Model.ManagerSamAccountName ?? "")';
             const initialDepartment = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Department ?? ""));
@@ -680,6 +682,22 @@
                     : '';
             }
 
+            function enforceLicenseFamilySelection(changedCheckbox) {
+                if (!changedCheckbox.checked) return;
+
+                const family = (changedCheckbox.dataset.licenseFamily || '').trim().toLocaleLowerCase();
+                if (!family) return;
+
+                for (const checkbox of licenseCheckboxes) {
+                    if (checkbox === changedCheckbox) continue;
+
+                    const otherFamily = (checkbox.dataset.licenseFamily || '').trim().toLocaleLowerCase();
+                    if (otherFamily === family) {
+                        checkbox.checked = false;
+                    }
+                }
+            }
+
             function normalizeMobilePhone() {
                 const mobileEl = document.getElementById('MobilePhone');
                 if (!mobileEl) return;
@@ -752,6 +770,10 @@
 
             titleSelect?.addEventListener('change', updateOfficeLicenseFromTitle);
             updateOfficeLicenseFromTitle();
+
+            licenseCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', () => enforceLicenseFamilySelection(checkbox));
+            });
 
             if (domainSelect.value) {
                 loadProjects(initialProjectId);

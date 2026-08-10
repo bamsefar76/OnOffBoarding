@@ -17,6 +17,7 @@ public class UserChangeQueueModel : PageModel
     private readonly ADGroupRuleService _groupRuleService;
     private readonly OfficeLicenseRuleService _officeLicenseRuleService;
     private readonly AccessCardGroupService _accessCardGroupService;
+    private readonly UiTextService _uiTextService;
 
     public UserChangeQueueModel(
         SqlConnectionFactory connectionFactory,
@@ -24,7 +25,8 @@ public class UserChangeQueueModel : PageModel
         QueueAuditService queueAuditService,
         ADGroupRuleService groupRuleService,
         OfficeLicenseRuleService officeLicenseRuleService,
-        AccessCardGroupService accessCardGroupService)
+        AccessCardGroupService accessCardGroupService,
+        UiTextService uiTextService)
     {
         _connectionFactory = connectionFactory;
         _objectAccessService = objectAccessService;
@@ -32,6 +34,7 @@ public class UserChangeQueueModel : PageModel
         _groupRuleService = groupRuleService;
         _officeLicenseRuleService = officeLicenseRuleService;
         _accessCardGroupService = accessCardGroupService;
+        _uiTextService = uiTextService;
     }
 
 public class DomainOption
@@ -93,6 +96,7 @@ public class ProjectOption
     [BindProperty] public string? Company { get; set; }
     [BindProperty] public string? ManagerSamAccountName { get; set; }
     [BindProperty] public string? Department { get; set; }
+    [BindProperty] public string? ProjectNumber { get; set; }
     [BindProperty] public string? Title { get; set; }
     [BindProperty] public string? EmployeeType { get; set; }
     [BindProperty] public string? Mail { get; set; }
@@ -193,6 +197,16 @@ public class ProjectOption
             NewOU = Domains
                 .FirstOrDefault(d => d.Domain.Equals(SelectedDomain, StringComparison.OrdinalIgnoreCase))
                 ?.OU;
+        }
+
+        if (!TryResolveSelectedProjectNumber())
+        {
+            var projectTexts = await _uiTextService.GetTextsAsync(
+                HttpContext,
+                new Dictionary<string, string> { ["select.project"] = "Select project" });
+            Message = projectTexts.T("select.project", "Select project");
+            await LoadGroupRecommendationsAsync(preferQueuedGroups: false);
+            return Page();
         }
 
         if (RequestType != "CREATE" && RequestType != "UPDATE")
@@ -334,6 +348,7 @@ INSERT INTO dbo.ADUserChangeQueue (
     NewOU,
     ManagerSamAccountName,
     Department,
+    ProjectNumber,
     Title,
     EmployeeType,
     AccountExpirationDate,
@@ -367,6 +382,7 @@ VALUES (
     @NewOU,
     @ManagerSamAccountName,
     @Department,
+    @ProjectNumber,
     @Title,
     @EmployeeType,
     @AccountExpirationDate,
@@ -453,7 +469,8 @@ SELECT TOP 1
     MobilePhone,
     OfficeLicense,
     ComputerType,
-    AccessCard
+    AccessCard,
+    ProjectNumber
 FROM dbo.ADUserChangeQueue
 WHERE RequestId = @RequestId
   AND RequestType = 'CREATE'
@@ -497,6 +514,7 @@ WHERE RequestId = @RequestId
         OfficeLicense = GetNullableString(reader, 25);
         ComputerType = GetNullableString(reader, 26);
         AccessCard = !reader.IsDBNull(27) && Convert.ToBoolean(reader.GetValue(27));
+        ProjectNumber = GetNullableString(reader, 28);
         SelectedDomain = GetDomainFromAddress(NewUserPrincipalName) ?? GetDomainFromAddress(Mail);
         RequestType = "CREATE";
 
@@ -523,6 +541,7 @@ SET
     NewOU = @NewOU,
     ManagerSamAccountName = @ManagerSamAccountName,
     Department = @Department,
+    ProjectNumber = @ProjectNumber,
     Title = @Title,
     EmployeeType = @EmployeeType,
     AccountExpirationDate = @AccountExpirationDate,
@@ -563,6 +582,7 @@ WHERE RequestId = @RequestId
         cmd.Parameters.AddNVarChar("@NewOU", NewOU, 1024);
         cmd.Parameters.AddNVarChar("@ManagerSamAccountName", ManagerSamAccountName, 256);
         cmd.Parameters.AddNVarChar("@Department", Department, 256);
+        cmd.Parameters.AddNVarChar("@ProjectNumber", ProjectNumber, 100);
         cmd.Parameters.AddNVarChar("@Title", Title, 256);
         cmd.Parameters.AddNVarChar("@EmployeeType", EmployeeType, 100);
         cmd.Parameters.AddNullableDate("@AccountExpirationDate", AccountExpirationDate?.Date);
@@ -580,6 +600,36 @@ WHERE RequestId = @RequestId
         cmd.Parameters.AddNVarChar("@OfficeLicense", OfficeLicense, 100);
         cmd.Parameters.AddNVarChar("@ComputerType", ComputerType, 100);
         cmd.Parameters.AddBit("@AccessCard", AccessCard);
+    }
+
+
+    private bool TryResolveSelectedProjectNumber()
+    {
+        ProjectNumber = null;
+
+        if (string.IsNullOrWhiteSpace(Department))
+        {
+            return false;
+        }
+
+        var selectedCompany = Domains
+            .FirstOrDefault(d => string.Equals(d.Domain, SelectedDomain, StringComparison.OrdinalIgnoreCase))
+            ?.Company;
+
+        var matches = Projects
+            .Where(p =>
+                string.Equals(p.ProjectName?.Trim(), Department.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(selectedCompany) ||
+                 string.Equals(p.Company?.Trim(), selectedCompany.Trim(), StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (matches.Count != 1 || string.IsNullOrWhiteSpace(matches[0].ProjectNumber))
+        {
+            return false;
+        }
+
+        ProjectNumber = matches[0].ProjectNumber.Trim();
+        return true;
     }
 
 

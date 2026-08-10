@@ -182,11 +182,13 @@
                         @foreach (var project in Model.Projects)
                         {
                             <option value="@project.ProjectName"
-                                    data-company="@project.Company">
+                                    data-company="@project.Company"
+                                    data-project-number="@project.ProjectNumber">
                                 @project.ProjectName (@project.ProjectNumber)
                             </option>
                         }
                     </select>
+                    <input asp-for="ProjectNumber" type="hidden" id="projectNumberInput" />
                 </div>
             </div>
 
@@ -711,6 +713,20 @@
         }
     }
 
+    function syncProjectNumber() {
+        const departmentEl = document.getElementById("departmentSelect");
+        const projectNumberEl = document.getElementById("projectNumberInput");
+
+        if (!departmentEl || !projectNumberEl) {
+            return;
+        }
+
+        const selectedOption = departmentEl.options[departmentEl.selectedIndex];
+        projectNumberEl.value = selectedOption
+            ? (selectedOption.getAttribute("data-project-number") || "")
+            : "";
+    }
+
     function filterProjectsByCompany() {
         const domainEl = document.getElementById("domainSelect");
         const departmentEl = document.getElementById("departmentSelect");
@@ -741,6 +757,8 @@
         if (currentOption && currentOption.hidden) {
             departmentEl.value = "";
         }
+
+        syncProjectNumber();
     }
 
     function updateCalculatedFields() {
@@ -846,6 +864,7 @@
         const domainEl = document.getElementById("domainSelect");
         const employeeTypeEl = document.getElementById("employeeTypeSelect");
         const titleEl = document.getElementById("titleSelect");
+        const departmentEl = document.getElementById("departmentSelect");
 
         if (givenEl) {
             givenEl.addEventListener("input", updateCalculatedFields);
@@ -862,6 +881,10 @@
                 filterComputerTypesByDomain();
                 filterProjectsByCompany();
             });
+        }
+
+        if (departmentEl) {
+            departmentEl.addEventListener("change", syncProjectNumber);
         }
 
         if (employeeTypeEl) {

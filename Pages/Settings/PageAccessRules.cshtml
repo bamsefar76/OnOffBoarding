@@ -124,7 +124,9 @@ else
                     <tbody>
                         @foreach (var rule in pageGroup)
                         {
-                            <tr>
+                            <tr data-sort-column-0="@rule.PagePath"
+                                data-sort-column-1="@rule.AdGroupName"
+                                data-sort-column-2="@(rule.Active ? 1 : 0)">
                                 <td colspan="4">
                                     <form method="post" asp-page-handler="Save" class="row g-2 align-items-center">
                                         <input type="hidden" name="EditRule.OriginalPagePath" value="@rule.PagePath" />

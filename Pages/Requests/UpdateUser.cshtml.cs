@@ -17,6 +17,7 @@ public class UpdateUserModel : PageModel
     private readonly OfficeLicenseRuleService _officeLicenseRuleService;
     private readonly AccessCardGroupService _accessCardGroupService;
     private readonly AccessScopeService _accessScopeService;
+    private readonly UiTextService _uiTextService;
 
     public UpdateUserModel(
         SqlConnectionFactory connectionFactory,
@@ -25,7 +26,8 @@ public class UpdateUserModel : PageModel
         ADGroupRuleService groupRuleService,
         OfficeLicenseRuleService officeLicenseRuleService,
         AccessCardGroupService accessCardGroupService,
-        AccessScopeService accessScopeService)
+        AccessScopeService accessScopeService,
+        UiTextService uiTextService)
     {
         _connectionFactory = connectionFactory;
         _objectAccessService = objectAccessService;
@@ -34,6 +36,7 @@ public class UpdateUserModel : PageModel
         _officeLicenseRuleService = officeLicenseRuleService;
         _accessCardGroupService = accessCardGroupService;
         _accessScopeService = accessScopeService;
+        _uiTextService = uiTextService;
     }
 public class ManagerOption
 {
@@ -114,6 +117,7 @@ public long? RequestId { get; set; }
     [BindProperty] public string? NewOU { get; set; }
     [BindProperty] public string? Company { get; set; }
     [BindProperty] public string? Department { get; set; }
+    [BindProperty] public string? ProjectNumber { get; set; }
     [BindProperty] public string? StreetAddress { get; set; }
     [BindProperty] public string? PostalCode { get; set; }
     [BindProperty] public string? City { get; set; }
@@ -462,6 +466,16 @@ OPTION (MAXRECURSION 32767);
 
         ApplySelectedDomainValues();
 
+        if (!TryResolveSelectedProjectNumber())
+        {
+            var projectTexts = await _uiTextService.GetTextsAsync(
+                HttpContext,
+                new Dictionary<string, string> { ["select.project"] = "Select project" });
+            Message = projectTexts.T("select.project", "Select project");
+            await LoadGroupRecommendationsAsync(preferQueuedGroups: false);
+            return Page();
+        }
+
         if (!await ApplyOfficeLicenseFromTitleAsync(requireRule: true))
         {
             var officeLicenseValidationMessage = Message;
@@ -607,6 +621,7 @@ INSERT INTO dbo.ADUserChangeQueue
     NewOU,
     ManagerSamAccountName,
     Department,
+    ProjectNumber,
     Title,
     EmployeeType,
     AccountExpirationDate,
@@ -641,6 +656,7 @@ VALUES
     @NewOU,
     @ManagerSamAccountName,
     @Department,
+    @ProjectNumber,
     @Title,
     @EmployeeType,
     @AccountExpirationDate,
@@ -939,6 +955,7 @@ SELECT TOP 1
     ISNULL(q.NewOU, '') AS NewOU,
     ISNULL(q.Company, '') AS Company,
     ISNULL(q.Department, '') AS Department,
+    ISNULL(q.ProjectNumber, '') AS ProjectNumber,
     ISNULL(q.StreetAddress, '') AS StreetAddress,
     ISNULL(q.PostalCode, '') AS PostalCode,
     ISNULL(q.City, '') AS City,
@@ -990,16 +1007,17 @@ WHERE q.RequestId = @RequestId
     NewOU = reader.GetString(19);
     Company = reader.GetString(20);
     Department = reader.GetString(21);
-    StreetAddress = reader.GetString(22);
-    PostalCode = reader.GetString(23);
-    City = reader.GetString(24);
-    Country = reader.GetString(25);
-    Office = reader.GetString(26);
-    ComputerType = reader.GetString(27);
-    AccessCard = reader.GetBoolean(28);
-    Enabled = reader.GetBoolean(29);
-    ExecuteAfter = reader.IsDBNull(30) ? DateTime.Today : reader.GetDateTime(30);
-    AccountExpirationDate = reader.IsDBNull(31) ? null : reader.GetDateTime(31);
+    ProjectNumber = reader.GetString(22);
+    StreetAddress = reader.GetString(23);
+    PostalCode = reader.GetString(24);
+    City = reader.GetString(25);
+    Country = reader.GetString(26);
+    Office = reader.GetString(27);
+    ComputerType = reader.GetString(28);
+    AccessCard = reader.GetBoolean(29);
+    Enabled = reader.GetBoolean(30);
+    ExecuteAfter = reader.IsDBNull(31) ? DateTime.Today : reader.GetDateTime(31);
+    AccountExpirationDate = reader.IsDBNull(32) ? null : reader.GetDateTime(32);
 
     SelectedDomain = GetDomainFromAddress(NewUserPrincipalName) ?? GetDomainFromAddress(Mail);
 
@@ -1025,6 +1043,7 @@ SET
     NewOU = @NewOU,
     ManagerSamAccountName = @ManagerSamAccountName,
     Department = @Department,
+    ProjectNumber = @ProjectNumber,
     Title = @Title,
     EmployeeType = @EmployeeType,
     AccountExpirationDate = @AccountExpirationDate,
@@ -1072,6 +1091,7 @@ private void AddUpdateParameters(SqlCommand cmd)
     cmd.Parameters.AddNVarChar("@NewOU", NewOU, 1024);
     cmd.Parameters.AddNVarChar("@ManagerSamAccountName", ManagerSamAccountName, 256);
     cmd.Parameters.AddNVarChar("@Department", Department, 256);
+    cmd.Parameters.AddNVarChar("@ProjectNumber", ProjectNumber, 100);
     cmd.Parameters.AddNVarChar("@Title", Title, 256);
     cmd.Parameters.AddNVarChar("@EmployeeType", EmployeeType, 100);
     cmd.Parameters.AddNullableDate("@AccountExpirationDate", AccountExpirationDate?.Date);
@@ -1088,6 +1108,30 @@ private void AddUpdateParameters(SqlCommand cmd)
     cmd.Parameters.AddNVarChar("@ComputerType", ComputerType, 100);
     cmd.Parameters.AddNVarChar("@OfficeLicense", OfficeLicense, 100);
     cmd.Parameters.AddBit("@AccessCard", AccessCard);
+}
+
+private bool TryResolveSelectedProjectNumber()
+{
+    if (string.IsNullOrWhiteSpace(Department))
+    {
+        ProjectNumber = null;
+        return false;
+    }
+
+    var matchingProjects = Projects
+        .Where(p => string.Equals(p.ProjectName?.Trim(), Department.Trim(), StringComparison.OrdinalIgnoreCase))
+        .Where(p => string.IsNullOrWhiteSpace(Company)
+            || string.Equals(p.Company?.Trim(), Company.Trim(), StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    if (matchingProjects.Count != 1 || string.IsNullOrWhiteSpace(matchingProjects[0].ProjectNumber))
+    {
+        ProjectNumber = null;
+        return false;
+    }
+
+    ProjectNumber = matchingProjects[0].ProjectNumber.Trim();
+    return true;
 }
 
 private ADGroupRuleService.GroupRuleContext BuildGroupRuleContext()

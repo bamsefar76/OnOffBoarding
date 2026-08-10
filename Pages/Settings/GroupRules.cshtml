@@ -354,7 +354,11 @@
                             <tbody>
                                 @foreach (var target in Model.Targets)
                                 {
-                                    <tr>
+                                    <tr data-sort-column-0="@target.SamAccountName @target.Name @target.DistinguishedName"
+                                        data-sort-column-1="@target.Action"
+                                        data-sort-column-2="@(target.Required ? 1 : 0)"
+                                        data-sort-column-3="@(target.ApprovalRequired ? 1 : 0)"
+                                        data-sort-column-4="@target.Notes">
                                         <td>
                                             <div><strong>@target.SamAccountName</strong></div>
                                             @if (!string.IsNullOrWhiteSpace(target.Name) && target.Name != target.SamAccountName)

@@ -350,6 +350,14 @@ ORDER BY {column};";
                 && !employee.UserPrincipalName.EndsWith("@" + domain!.Domain, StringComparison.OrdinalIgnoreCase);
             var proposedUpn = BuildMailLocalPart(GivenName, Surname) + "@" + domain!.Domain;
             var requestType = employee.ObjectGuid.HasValue ? "UPDATE" : "CREATE";
+
+            if (requestType == "UPDATE" && project is null)
+            {
+                await tx.RollbackAsync(HttpContext.RequestAborted);
+                ModelState.AddModelError(nameof(ProjectId), "Select a project belonging to the selected label.");
+                return Page();
+            }
+
             // Only a genuinely new person (no existing AD account) needs a proposed
             // SamAccountName -- an existing employee already has one, carried via
             // TargetSamAccountName instead.

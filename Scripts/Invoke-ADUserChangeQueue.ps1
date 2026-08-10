@@ -1404,6 +1404,7 @@ SELECT TOP (@BatchSize)
     NewOU,
     ManagerSamAccountName,
     Department,
+    ProjectNumber,
     Title,
     Mail,
     PrivateEmail,
@@ -2984,6 +2985,10 @@ function Invoke-CreateRequest {
         }
     }
 
+    if (Test-IsBlank $Request.ProjectNumber) {
+        throw "CREATE request $($Request.RequestId) has no ProjectNumber. A project number is required so extensionAttribute4 can be set."
+    }
+
     $existingUser = Resolve-ADUserBySamAccountName $Request.NewSamAccountName
     if ($null -ne $existingUser -and -not $AllowExistingCreateRecovery) {
         throw "CREATE request $($Request.RequestId) cannot continue because AD user '$($Request.NewSamAccountName)' already exists. Use -AllowExistingCreateRecovery only when recovering from a partially processed CREATE request."
@@ -3014,6 +3019,10 @@ function Invoke-CreateRequest {
         $null = Set-StandardADUserAttributes -Identity $createdUser.DistinguishedName -Request $Request
         $null = Invoke-BusinessRuleExtensionAttributesNonBlocking -Identity $createdUser.DistinguishedName -Request $Request
         $null = Set-AttributeJsonAttributes -Identity $createdUser.DistinguishedName -AttributeJson $Request.AttributeJson
+
+        Invoke-ADOperation "Set extensionAttribute4 project number for $($createdUser.SamAccountName) to $($Request.ProjectNumber)" {
+            Set-ADSingleValuedStringAttribute -Identity $createdUser.DistinguishedName -AttributeName 'extensionAttribute4' -Value ([string]$Request.ProjectNumber)
+        }
 
         if ($enabled) {
             Invoke-ADOperation "Set initial password for $($createdUser.SamAccountName)" {
@@ -3090,6 +3099,10 @@ function Invoke-CreateRequest {
     $null = Invoke-BusinessRuleExtensionAttributesNonBlocking -Identity $createdUser.DistinguishedName -Request $Request
     $null = Set-AttributeJsonAttributes -Identity $createdUser.DistinguishedName -AttributeJson $Request.AttributeJson
 
+    Invoke-ADOperation "Set extensionAttribute4 project number for $($createdUser.SamAccountName) to $($Request.ProjectNumber)" {
+        Set-ADSingleValuedStringAttribute -Identity $createdUser.DistinguishedName -AttributeName 'extensionAttribute4' -Value ([string]$Request.ProjectNumber)
+    }
+
     if ($enabled) {
         Invoke-ADOperation "Set initial password for $($createdUser.SamAccountName)" {
             Set-ADAccountPassword -Identity $createdUser.DistinguishedName -Reset -NewPassword $initialPassword.SecureString -Server $script:ADServerName -ErrorAction Stop
@@ -3135,11 +3148,19 @@ function Invoke-UpdateRequest {
         throw "UPDATE request $($Request.RequestId) has neither TargetObjectGUID nor TargetSamAccountName."
     }
 
+    if (Test-IsBlank $Request.ProjectNumber) {
+        throw "UPDATE request $($Request.RequestId) has no ProjectNumber. A project number is required so extensionAttribute4 can be updated."
+    }
+
     $adUser = Get-ADUser -Identity $identity -Properties DistinguishedName,ObjectGUID,SamAccountName,UserPrincipalName,DisplayName -Server $script:ADServerName -ErrorAction Stop
 
     $null = Set-StandardADUserAttributes -Identity $adUser.DistinguishedName -Request $Request
     $null = Invoke-BusinessRuleExtensionAttributesNonBlocking -Identity $adUser.DistinguishedName -Request $Request
     $null = Set-AttributeJsonAttributes -Identity $adUser.DistinguishedName -AttributeJson $Request.AttributeJson
+
+    Invoke-ADOperation "Set extensionAttribute4 project number for $($adUser.SamAccountName) to $($Request.ProjectNumber)" {
+        Set-ADSingleValuedStringAttribute -Identity $adUser.DistinguishedName -AttributeName 'extensionAttribute4' -Value ([string]$Request.ProjectNumber)
+    }
 
     if ($RenameCNToDisplayName -and -not (Test-IsBlank $Request.NewDisplayName)) {
         $refreshedUser = Get-ADUser -Identity $adUser.ObjectGUID -Properties DistinguishedName,Name -Server $script:ADServerName -ErrorAction Stop
