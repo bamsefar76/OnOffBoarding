@@ -17,6 +17,7 @@
         ["employeeMaintenance.stale"] = "Stale",
         ["employeeMaintenance.needsReview"] = "Needs review",
         ["employeeMaintenance.testData"] = "Test data",
+        ["employeeMaintenance.testDataHelp"] = "Test data is marked manually. Search for the employee, open Edit, and select \"This is test data\". No automatic test-user detection is performed.",
         ["employeeMaintenance.reviewAge"] = "Review after",
         ["employeeMaintenance.days"] = "days",
         ["employeeMaintenance.apply"] = "Apply",
@@ -195,6 +196,7 @@
                     <option value="needsReview">@T("employeeMaintenance.needsReview")</option>
                     <option value="test">@T("employeeMaintenance.testData")</option>
                 </select>
+                <div class="form-text">@T("employeeMaintenance.testDataHelp")</div>
             </div>
             <div class="col-6 col-lg-2">
                 <label asp-for="ReviewDays" class="form-label mb-1">@T("employeeMaintenance.reviewAge")</label>
