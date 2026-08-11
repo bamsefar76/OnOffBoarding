@@ -36,6 +36,7 @@
         ["licenseStatus.itRejected"] = "Rejected by IT",
         ["licenseStatus.provisioning"] = "Provisioning",
         ["licenseStatus.provisioningFailed"] = "Provisioning failed",
+        ["licenseStatus.deprovisioningFailed"] = "Removal failed",
         ["licenseDecision.approved"] = "Approved",
         ["licenseDecision.rejected"] = "Rejected"
     };
@@ -58,6 +59,7 @@
         "ITRejected" => T("licenseStatus.itRejected"),
         "Provisioning" => T("licenseStatus.provisioning"),
         "ProvisioningFailed" => T("licenseStatus.provisioningFailed"),
+        "DeprovisioningFailed" => T("licenseStatus.deprovisioningFailed"),
         _ => status
     };
 
@@ -133,6 +135,7 @@
                         <option value="PartiallyApproved">@T("licenseStatus.partiallyApproved")</option>
                         <option value="Provisioning">@T("licenseStatus.provisioning")</option>
                         <option value="ProvisioningFailed">@T("licenseStatus.provisioningFailed")</option>
+                        <option value="DeprovisioningFailed">@T("licenseStatus.deprovisioningFailed")</option>
                         <option value="Completed">@T("licenseStatus.completed")</option>
                         <option value="ManagerRejected">@T("licenseStatus.managerRejected")</option>
                         <option value="ITRejected">@T("licenseStatus.itRejected")</option>

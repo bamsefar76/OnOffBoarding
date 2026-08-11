@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -11,13 +12,16 @@ public sealed class IndexModel : PageModel
 {
     private readonly SqlConnectionFactory _connections;
     private readonly LicenseEmailService _emails;
+    private readonly LicenseCapacityService _capacity;
 
     public IndexModel(
         SqlConnectionFactory connections,
-        LicenseEmailService emails)
+        LicenseEmailService emails,
+        LicenseCapacityService capacity)
     {
         _connections = connections;
         _emails = emails;
+        _capacity = capacity;
     }
 
     [BindProperty]
@@ -25,6 +29,15 @@ public sealed class IndexModel : PageModel
 
     [BindProperty]
     public string BusinessReason { get; set; } = "";
+
+    [BindProperty]
+    public string StartDateText { get; set; } = DateTime.Today.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture);
+
+    [BindProperty]
+    public string? EndDateText { get; set; }
+
+    [BindProperty]
+    public string PeriodType { get; set; } = "";
 
     [TempData]
     public string? StatusMessageKey { get; set; }
@@ -51,6 +64,9 @@ public sealed class IndexModel : PageModel
     public async Task<IActionResult> OnPostSubmitAsync()
     {
         BusinessReason = BusinessReason?.Trim() ?? "";
+        StartDateText = StartDateText?.Trim() ?? "";
+        EndDateText = string.IsNullOrWhiteSpace(EndDateText) ? null : EndDateText.Trim();
+        PeriodType = PeriodType?.Trim() ?? "";
 
         SelectedLicenseIds = SelectedLicenseIds
             .Where(x => x > 0)
@@ -112,6 +128,54 @@ public sealed class IndexModel : PageModel
                 duplicateFamily.Key));
         }
 
+        DateTime? startDate = null;
+        DateTime? endDate = null;
+        var isPermanent = string.Equals(PeriodType, "Permanent", StringComparison.OrdinalIgnoreCase);
+        var isFixedPeriod = string.Equals(PeriodType, "Fixed", StringComparison.OrdinalIgnoreCase);
+
+        if (!isPermanent && !isFixedPeriod)
+        {
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.periodTypeInvalid"));
+        }
+
+        if (!TryParseDate(StartDateText, required: true, out startDate))
+        {
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.startDateInvalid"));
+        }
+
+        if (isFixedPeriod)
+        {
+            if (string.IsNullOrWhiteSpace(EndDateText))
+            {
+                ValidationIssues.Add(new ValidationIssue(
+                    "licenseRequests.validation.endDateRequired"));
+            }
+            else if (!TryParseDate(EndDateText, required: true, out endDate))
+            {
+                ValidationIssues.Add(new ValidationIssue(
+                    "licenseRequests.validation.endDateInvalid"));
+            }
+        }
+        else
+        {
+            endDate = null;
+            EndDateText = null;
+        }
+
+        if (startDate.HasValue && endDate.HasValue && endDate.Value.Date < startDate.Value.Date)
+        {
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.endBeforeStart"));
+        }
+
+        if (CurrentUser is not null && string.IsNullOrWhiteSpace(CurrentUser.ProjectNumber))
+        {
+            ValidationIssues.Add(new ValidationIssue(
+                "licenseRequests.validation.projectNumberMissing"));
+        }
+
         if (string.IsNullOrWhiteSpace(BusinessReason))
         {
             ValidationIssues.Add(new ValidationIssue(
@@ -136,6 +200,32 @@ public sealed class IndexModel : PageModel
 
         try
         {
+            var capacityViolations = await _capacity.CheckCapacityAsync(
+                connection,
+                transaction,
+                selected.Select(x => x.Id).ToArray(),
+                startDate!.Value,
+                endDate,
+                HttpContext.RequestAborted);
+
+            if (capacityViolations.Count > 0)
+            {
+                await transaction.RollbackAsync(HttpContext.RequestAborted);
+
+                foreach (var violation in capacityViolations)
+                {
+                    ValidationIssues.Add(new ValidationIssue(
+                        "licenseRequests.validation.capacityExceeded",
+                        violation.LicenseName,
+                        violation.ReservedCount,
+                        violation.LicenseCount));
+                }
+
+                await LoadLicensesAsync(connection);
+                await LoadMyApplicationsAsync(connection);
+                return Page();
+            }
+
             long applicationId;
 
             await using (var command = connection.CreateCommand())
@@ -151,6 +241,10 @@ INSERT INTO dbo.LicenseApplications
     ManagerDisplayName,
     ManagerEmail,
     BusinessReason,
+    ProjectNumber,
+    StartDate,
+    EndDate,
+    IsPermanent,
     Status,
     SubmittedAt
 )
@@ -164,6 +258,10 @@ VALUES
     @ManagerName,
     @ManagerEmail,
     @Reason,
+    @ProjectNumber,
+    @StartDate,
+    @EndDate,
+    @IsPermanent,
     N'AwaitingManager',
     SYSDATETIME()
 );";
@@ -196,6 +294,19 @@ VALUES
                     "@Reason",
                     BusinessReason,
                     2000);
+                command.Parameters.AddRequiredNVarChar(
+                    "@ProjectNumber",
+                    CurrentUser.ProjectNumber,
+                    100);
+                command.Parameters.AddNullableDate(
+                    "@StartDate",
+                    startDate);
+                command.Parameters.AddNullableDate(
+                    "@EndDate",
+                    endDate);
+                command.Parameters.AddBit(
+                    "@IsPermanent",
+                    isPermanent);
 
                 applicationId = Convert.ToInt64(
                     await command.ExecuteScalarAsync(
@@ -216,6 +327,9 @@ INSERT INTO dbo.LicenseApplicationItems
     Status,
     FulfillmentType,
     AdGroupName,
+    StartDate,
+    EndDate,
+    IsPermanent,
     ProvisioningStatus
 )
 VALUES
@@ -225,6 +339,9 @@ VALUES
     N'Pending',
     @FulfillmentType,
     @AdGroupName,
+    @StartDate,
+    @EndDate,
+    @IsPermanent,
     NULL
 );";
 
@@ -242,6 +359,15 @@ VALUES
                     "@AdGroupName",
                     license.AdGroupName,
                     300);
+                itemCommand.Parameters.AddNullableDate(
+                    "@StartDate",
+                    startDate);
+                itemCommand.Parameters.AddNullableDate(
+                    "@EndDate",
+                    endDate);
+                itemCommand.Parameters.AddBit(
+                    "@IsPermanent",
+                    isPermanent);
 
                 await itemCommand.ExecuteNonQueryAsync(
                     HttpContext.RequestAborted);
@@ -252,15 +378,17 @@ VALUES
                 transaction,
                 applicationId);
 
+            var periodText = startDate!.Value.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)
+                + (endDate.HasValue ? " – " + endDate.Value.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) : "");
             var licenseText = string.Join(
                 Environment.NewLine,
-                selected.Select(x => "- " + x.Name));
+                selected.Select(x => "- " + x.Name + " (" + periodText + ")"));
 
             var licenseHtml = string.Join(
                 "<br />",
                 selected.Select(
                     x => "&#8226; "
-                         + System.Net.WebUtility.HtmlEncode(x.Name)));
+                         + System.Net.WebUtility.HtmlEncode(x.Name + " (" + periodText + ")")));
 
             await _emails.QueueTemplateAsync(
                 connection,
@@ -275,6 +403,9 @@ VALUES
                     ["RequesterName"] = CurrentUser.DisplayName,
                     ["RequesterEmail"] = CurrentUser.Email,
                     ["BusinessReason"] = BusinessReason,
+                    ["ProjectNumber"] = CurrentUser.ProjectNumber,
+                    ["StartDate"] = startDate.Value.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture),
+                    ["EndDate"] = endDate?.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture) ?? "",
                     ["LicenseList"] = licenseText,
                     ["ReviewUrl"] = reviewUrl
                 },
@@ -378,11 +509,36 @@ SELECT TOP (1)
         ad.ManagerSamAccountName,
         N''
     ),
-    ISNULL(manager.Mail, N'')
+    ISNULL(manager.Mail, N''),
+    COALESCE(currentAssignment.ProjectNumber, latestRequest.ProjectNumber, N'')
 FROM dbo.ADObjects AS ad
 LEFT JOIN dbo.ADObjects AS manager
     ON manager.SamAccountName = ad.ManagerSamAccountName
    AND ISNULL(manager.IsDeleted, 0) = 0
+OUTER APPLY
+(
+    SELECT TOP (1) assignment.ProjectNumber
+    FROM dbo.Employees AS employee
+    INNER JOIN dbo.Assignments AS assignment
+        ON assignment.EmployeeId = employee.EmployeeId
+    WHERE employee.CurrentSamAccountName = ad.SamAccountName
+      AND assignment.StartDate <= CAST(SYSDATETIME() AS date)
+      AND (assignment.EndDate IS NULL OR assignment.EndDate >= CAST(SYSDATETIME() AS date))
+      AND NULLIF(LTRIM(RTRIM(assignment.ProjectNumber)), N'') IS NOT NULL
+    ORDER BY assignment.StartDate DESC, assignment.AssignmentId DESC
+) AS currentAssignment
+OUTER APPLY
+(
+    SELECT TOP (1) NULLIF(LTRIM(RTRIM(queueItem.ProjectNumber)), N'') AS ProjectNumber
+    FROM dbo.ADUserChangeQueue AS queueItem
+    WHERE NULLIF(LTRIM(RTRIM(queueItem.ProjectNumber)), N'') IS NOT NULL
+      AND
+      (
+          queueItem.TargetSamAccountName = ad.SamAccountName
+          OR queueItem.NewSamAccountName = ad.SamAccountName
+      )
+    ORDER BY queueItem.RequestId DESC
+) AS latestRequest
 WHERE ad.SamAccountName = @Sam
   AND ISNULL(ad.IsDeleted, 0) = 0;";
 
@@ -408,7 +564,8 @@ WHERE ad.SamAccountName = @Sam
             Email = Get(reader, 2),
             ManagerSam = Get(reader, 3),
             ManagerName = Get(reader, 4),
-            ManagerEmail = Get(reader, 5)
+            ManagerEmail = Get(reader, 5),
+            ProjectNumber = Get(reader, 6)
         };
     }
 
@@ -428,7 +585,16 @@ SELECT
     ProductFamily,
     LicenseLevel,
     FulfillmentType,
-    AdGroupName
+    AdGroupName,
+    LicenseCount,
+    (
+        SELECT COUNT(*)
+        FROM dbo.LicenseAssignments AS assignment
+        WHERE assignment.LicenseProductId = dbo.LicenseProducts.LicenseProductId
+          AND assignment.Status = N'Active'
+          AND assignment.StartDate <= CAST(SYSDATETIME() AS date)
+          AND (assignment.IsPermanent = 1 OR assignment.EndDate IS NULL OR assignment.EndDate >= CAST(SYSDATETIME() AS date))
+    ) AS CurrentInUse
 FROM dbo.LicenseProducts
 WHERE Active = 1
 ORDER BY
@@ -481,7 +647,16 @@ SELECT
     ProductFamily,
     LicenseLevel,
     FulfillmentType,
-    AdGroupName
+    AdGroupName,
+    LicenseCount,
+    (
+        SELECT COUNT(*)
+        FROM dbo.LicenseAssignments AS assignment
+        WHERE assignment.LicenseProductId = dbo.LicenseProducts.LicenseProductId
+          AND assignment.Status = N'Active'
+          AND assignment.StartDate <= CAST(SYSDATETIME() AS date)
+          AND (assignment.IsPermanent = 1 OR assignment.EndDate IS NULL OR assignment.EndDate >= CAST(SYSDATETIME() AS date))
+    ) AS CurrentInUse
 FROM dbo.LicenseProducts
 WHERE Active = 1
   AND LicenseProductId IN
@@ -571,6 +746,7 @@ SELECT
     application.ManagerSamAccountName,
     application.ManagerDisplayName,
     application.BusinessReason,
+    application.ProjectNumber,
     application.Status,
     application.ManagerDecision,
     application.ManagerReason,
@@ -581,6 +757,9 @@ SELECT
     item.ItReason,
     item.FulfillmentType,
     item.AdGroupName,
+    item.StartDate,
+    item.EndDate,
+    item.IsPermanent,
     item.ProvisioningStatus,
     item.ProvisioningLastError
 FROM dbo.LicenseApplications AS application
@@ -614,27 +793,42 @@ ORDER BY product.Name;";
                 ManagerSam = Get(reader, 3),
                 ManagerName = Get(reader, 4),
                 BusinessReason = Get(reader, 5),
-                Status = Get(reader, 6),
-                ManagerDecision = Get(reader, 7),
-                ManagerReason = Get(reader, 8),
-                SubmittedAt = reader.GetDateTime(9)
+                ProjectNumber = Get(reader, 6),
+                Status = Get(reader, 7),
+                ManagerDecision = Get(reader, 8),
+                ManagerReason = Get(reader, 9),
+                SubmittedAt = reader.GetDateTime(10)
             };
 
             result.Items.Add(
                 new ItemDetails
                 {
-                    Id = reader.GetInt64(10),
-                    Name = Get(reader, 11),
-                    Status = Get(reader, 12),
-                    Reason = Get(reader, 13),
-                    FulfillmentType = Get(reader, 14),
-                    AdGroupName = Get(reader, 15),
-                    ProvisioningStatus = Get(reader, 16),
-                    ProvisioningLastError = Get(reader, 17)
+                    Id = reader.GetInt64(11),
+                    Name = Get(reader, 12),
+                    Status = Get(reader, 13),
+                    Reason = Get(reader, 14),
+                    FulfillmentType = Get(reader, 15),
+                    AdGroupName = Get(reader, 16),
+                    StartDate = reader.GetDateTime(17),
+                    EndDate = reader.IsDBNull(18) ? null : reader.GetDateTime(18),
+                    IsPermanent = reader.GetBoolean(19),
+                    ProvisioningStatus = Get(reader, 20),
+                    ProvisioningLastError = Get(reader, 21)
                 });
         }
 
         return result;
+    }
+
+    private static bool TryParseDate(string? value, bool required, out DateTime? result)
+    {
+        result = null;
+        if (string.IsNullOrWhiteSpace(value)) return !required;
+        var formats = new[] { "dd.MM.yyyy", "d.M.yyyy", "yyyy-MM-dd" };
+        if (!DateTime.TryParseExact(value.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+            return false;
+        result = parsed.Date;
+        return true;
     }
 
     private static LicenseOption ReadLicense(
@@ -650,7 +844,9 @@ ORDER BY product.Name;";
                     ? null
                     : reader.GetInt32(4),
             FulfillmentType = Get(reader, 5),
-            AdGroupName = Get(reader, 6)
+            AdGroupName = Get(reader, 6),
+            LicenseCount = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+            CurrentInUse = reader.GetInt32(8)
         };
 
     private static string Get(
@@ -663,7 +859,11 @@ ORDER BY product.Name;";
               ?? "";
 
 
-    public sealed record ValidationIssue(string Key, string? Argument = null);
+    public sealed record ValidationIssue(
+        string Key,
+        string? Argument = null,
+        int? Current = null,
+        int? Limit = null);
 
     public sealed class UserInfo
     {
@@ -673,6 +873,7 @@ ORDER BY product.Name;";
         public string ManagerSam { get; init; } = "";
         public string ManagerName { get; init; } = "";
         public string ManagerEmail { get; init; } = "";
+        public string ProjectNumber { get; init; } = "";
     }
 
     public sealed class LicenseOption
@@ -684,6 +885,8 @@ ORDER BY product.Name;";
         public int? LicenseLevel { get; init; }
         public string FulfillmentType { get; init; } = "Manual";
         public string AdGroupName { get; init; } = "";
+        public int? LicenseCount { get; init; }
+        public int CurrentInUse { get; init; }
     }
 
     public sealed class ApplicationDetails
@@ -694,6 +897,7 @@ ORDER BY product.Name;";
         public string ManagerSam { get; init; } = "";
         public string ManagerName { get; init; } = "";
         public string BusinessReason { get; init; } = "";
+        public string ProjectNumber { get; init; } = "";
         public string Status { get; init; } = "";
         public string ManagerDecision { get; init; } = "";
         public string ManagerReason { get; init; } = "";
@@ -709,6 +913,9 @@ ORDER BY product.Name;";
         public string Reason { get; init; } = "";
         public string FulfillmentType { get; init; } = "Manual";
         public string AdGroupName { get; init; } = "";
+        public DateTime StartDate { get; init; }
+        public DateTime? EndDate { get; init; }
+        public bool IsPermanent { get; init; }
         public string ProvisioningStatus { get; init; } = "";
         public string ProvisioningLastError { get; init; } = "";
     }

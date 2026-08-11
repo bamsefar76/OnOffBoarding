@@ -1,0 +1,517 @@
+@page
+@model UserChangeQueueWeb.Pages.Employees.MaintenanceModel
+@using System.Text.Json
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["employeeMaintenance.title"] = "Employee maintenance",
+        ["employeeMaintenance.intro"] = "Review ageing employee records, maintain curated contact data, and clean up test records without removing historical business data.",
+        ["employeeMaintenance.search"] = "Search",
+        ["employeeMaintenance.searchPlaceholder"] = "Name, ID, email, phone, SAM, UPN or note",
+        ["employeeMaintenance.status"] = "Status",
+        ["employeeMaintenance.state"] = "Data state",
+        ["employeeMaintenance.all"] = "All",
+        ["employeeMaintenance.current"] = "Current",
+        ["employeeMaintenance.stale"] = "Stale",
+        ["employeeMaintenance.needsReview"] = "Needs review",
+        ["employeeMaintenance.testData"] = "Test data",
+        ["employeeMaintenance.reviewAge"] = "Review after",
+        ["employeeMaintenance.days"] = "days",
+        ["employeeMaintenance.apply"] = "Apply",
+        ["employeeMaintenance.clearFilters"] = "Clear filters",
+        ["employeeMaintenance.close"] = "Close",
+        ["employeeMaintenance.total"] = "Employees",
+        ["employeeMaintenance.testCount"] = "Test records",
+        ["employeeMaintenance.reviewCount"] = "Need review",
+        ["employeeMaintenance.staleCount"] = "Stale records",
+        ["employeeMaintenance.id"] = "ID",
+        ["employeeMaintenance.employee"] = "Employee",
+        ["employeeMaintenance.identity"] = "Identity",
+        ["employeeMaintenance.dataState"] = "Data state",
+        ["employeeMaintenance.lastAssignment"] = "Last assignment",
+        ["employeeMaintenance.reviewed"] = "Reviewed",
+        ["employeeMaintenance.history"] = "History",
+        ["employeeMaintenance.action"] = "Action",
+        ["employeeMaintenance.edit"] = "Edit",
+        ["employeeMaintenance.noRows"] = "No employees match the selected filters.",
+        ["employeeMaintenance.liveAd"] = "Live AD",
+        ["employeeMaintenance.noLiveAd"] = "No live AD",
+        ["employeeMaintenance.currentAssignment"] = "Current assignment",
+        ["employeeMaintenance.assignments"] = "Assignments: {0}",
+        ["employeeMaintenance.requests"] = "Requests: {0}",
+        ["employeeMaintenance.never"] = "Never",
+        ["employeeMaintenance.previous"] = "Previous",
+        ["employeeMaintenance.next"] = "Next",
+        ["employeeMaintenance.pageOf"] = "Page {0} of {1}",
+        ["employeeMaintenance.editTitle"] = "Maintain employee #{0}",
+        ["employeeMaintenance.givenName"] = "Given name",
+        ["employeeMaintenance.surname"] = "Surname",
+        ["employeeMaintenance.privateEmail"] = "Private email",
+        ["employeeMaintenance.mobilePhone"] = "Mobile phone",
+        ["employeeMaintenance.maintenanceNote"] = "Maintenance note",
+        ["employeeMaintenance.maintenanceNoteHelp"] = "Optional note explaining why this record is test data, stale, or otherwise requires maintenance.",
+        ["employeeMaintenance.markTest"] = "This is test data",
+        ["employeeMaintenance.currentAdObject"] = "Current AD object",
+        ["employeeMaintenance.sam"] = "SAM account",
+        ["employeeMaintenance.upn"] = "UPN",
+        ["employeeMaintenance.save"] = "Save and mark reviewed",
+        ["employeeMaintenance.markReviewed"] = "Mark reviewed",
+        ["employeeMaintenance.clearAdLink"] = "Clear AD link",
+        ["employeeMaintenance.clearAdHelp"] = "Use this when an old employee record still points to an AD identity that should no longer be considered current.",
+        ["employeeMaintenance.deleteTitle"] = "Delete record",
+        ["employeeMaintenance.deleteHelp"] = "Physical deletion is only allowed when the employee has no assignment or request history. Maintenance audit is retained after deletion.",
+        ["employeeMaintenance.deleteBlocked"] = "This employee has historical assignments or requests and cannot be physically deleted. Keep the record for audit, or clear the AD link and mark it inactive instead.",
+        ["employeeMaintenance.deleteReason"] = "Deletion reason",
+        ["employeeMaintenance.deleteReasonPlaceholder"] = "For example: test record created during implementation",
+        ["employeeMaintenance.delete"] = "Delete employee",
+        ["employeeMaintenance.confirmDelete"] = "Permanently delete this employee record? This cannot be undone.",
+        ["employeeMaintenance.confirmClearAd"] = "Clear the current AD link for this employee?",
+        ["employeeMaintenance.auditTitle"] = "Maintenance history",
+        ["employeeMaintenance.auditAction"] = "Action",
+        ["employeeMaintenance.auditWhen"] = "When",
+        ["employeeMaintenance.auditBy"] = "By",
+        ["employeeMaintenance.auditReason"] = "Reason",
+        ["employeeMaintenance.auditNone"] = "No maintenance actions have been logged for this employee yet.",
+        ["employeeMaintenance.audit.update"] = "Updated",
+        ["employeeMaintenance.audit.review"] = "Reviewed",
+        ["employeeMaintenance.audit.clearAdLink"] = "AD link cleared",
+        ["employeeMaintenance.audit.delete"] = "Deleted",
+        ["employeeMaintenance.message.required"] = "Given name and surname are required.",
+        ["employeeMaintenance.message.notFound"] = "The employee record could not be found.",
+        ["employeeMaintenance.message.mergedReadOnly"] = "Merged employee records are read-only on this page.",
+        ["employeeMaintenance.message.invalidStatus"] = "The selected employee status is not valid.",
+        ["employeeMaintenance.message.saved"] = "Employee data was saved and marked as reviewed.",
+        ["employeeMaintenance.message.reviewed"] = "Employee data was marked as reviewed.",
+        ["employeeMaintenance.message.adLinkCleared"] = "The current AD link was cleared.",
+        ["employeeMaintenance.message.clearAdBlockedLive"] = "A live AD link can only be cleared for records marked as test data.",
+        ["employeeMaintenance.message.deleteReasonRequired"] = "A deletion reason is required.",
+        ["employeeMaintenance.message.deleteBlockedHistory"] = "This employee cannot be deleted because assignment or request history exists.",
+        ["employeeMaintenance.message.deleteNotCandidate"] = "Only test data or stale employee records can be physically deleted.",
+        ["employeeMaintenance.message.deleteBlockedReference"] = "This employee is still referenced by other data and cannot be deleted.",
+        ["employeeMaintenance.message.deleted"] = "The employee record was deleted. The maintenance audit entry was retained.",
+        ["employeeStatus.active"] = "Active",
+        ["employeeStatus.inactive"] = "Inactive",
+        ["employeeStatus.prospective"] = "Prospective",
+        ["employeeStatus.merged"] = "Merged"
+    };
+
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    string F(string key, params object[] args) => string.Format(uiText.T(key, textFallbacks[key]), args);
+    string StatusLabel(string status) => status.ToLowerInvariant() switch
+    {
+        "active" => T("employeeStatus.active"),
+        "inactive" => T("employeeStatus.inactive"),
+        "prospective" => T("employeeStatus.prospective"),
+        "merged" => T("employeeStatus.merged"),
+        _ => status
+    };
+    string AuditLabel(string action) => action.ToLowerInvariant() switch
+    {
+        "update" => T("employeeMaintenance.audit.update"),
+        "review" => T("employeeMaintenance.audit.review"),
+        "clearadlink" => T("employeeMaintenance.audit.clearAdLink"),
+        "delete" => T("employeeMaintenance.audit.delete"),
+        _ => action
+    };
+
+    ViewData["Title"] = T("employeeMaintenance.title");
+    var deleteConfirm = JsonSerializer.Serialize(T("employeeMaintenance.confirmDelete"));
+    var clearAdConfirm = JsonSerializer.Serialize(T("employeeMaintenance.confirmClearAd"));
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+    <div>
+        <h2 class="mb-1">@T("employeeMaintenance.title")</h2>
+        <p class="text-muted mb-0">@T("employeeMaintenance.intro")</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(Model.MessageKey) && textFallbacks.ContainsKey(Model.MessageKey))
+{
+    <div class="alert alert-info">@T(Model.MessageKey)</div>
+}
+
+<div class="row g-2 mb-3">
+    <div class="col-6 col-lg-3">
+        <a class="card text-decoration-none h-100" asp-page="/Employees/Maintenance" asp-route-reviewDays="@Model.ReviewDays">
+            <div class="card-body py-2">
+                <div class="small text-muted">@T("employeeMaintenance.total")</div>
+                <div class="fs-4 fw-semibold">@Model.Summary.Total</div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-lg-3">
+        <a class="card text-decoration-none h-100" asp-page="/Employees/Maintenance" asp-route-stateFilter="test" asp-route-reviewDays="@Model.ReviewDays">
+            <div class="card-body py-2">
+                <div class="small text-muted">@T("employeeMaintenance.testCount")</div>
+                <div class="fs-4 fw-semibold">@Model.Summary.Test</div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-lg-3">
+        <a class="card text-decoration-none h-100" asp-page="/Employees/Maintenance" asp-route-stateFilter="needsReview" asp-route-reviewDays="@Model.ReviewDays">
+            <div class="card-body py-2">
+                <div class="small text-muted">@T("employeeMaintenance.reviewCount")</div>
+                <div class="fs-4 fw-semibold">@Model.Summary.NeedsReview</div>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-lg-3">
+        <a class="card text-decoration-none h-100" asp-page="/Employees/Maintenance" asp-route-stateFilter="stale" asp-route-reviewDays="@Model.ReviewDays">
+            <div class="card-body py-2">
+                <div class="small text-muted">@T("employeeMaintenance.staleCount")</div>
+                <div class="fs-4 fw-semibold">@Model.Summary.Stale</div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<form method="get" class="card mb-3">
+    <div class="card-body py-3">
+        <div class="row g-2 align-items-end">
+            <div class="col-12 col-lg-4">
+                <label asp-for="Search" class="form-label mb-1">@T("employeeMaintenance.search")</label>
+                <input asp-for="Search" class="form-control" placeholder="@T("employeeMaintenance.searchPlaceholder")" />
+            </div>
+            <div class="col-6 col-lg-2">
+                <label asp-for="StatusFilter" class="form-label mb-1">@T("employeeMaintenance.status")</label>
+                <select asp-for="StatusFilter" class="form-select">
+                    <option value="">@T("employeeMaintenance.all")</option>
+                    @foreach (var status in Model.StatusOptions)
+                    {
+                        <option value="@status">@StatusLabel(status)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-6 col-lg-2">
+                <label asp-for="StateFilter" class="form-label mb-1">@T("employeeMaintenance.state")</label>
+                <select asp-for="StateFilter" class="form-select">
+                    <option value="">@T("employeeMaintenance.all")</option>
+                    <option value="current">@T("employeeMaintenance.current")</option>
+                    <option value="stale">@T("employeeMaintenance.stale")</option>
+                    <option value="needsReview">@T("employeeMaintenance.needsReview")</option>
+                    <option value="test">@T("employeeMaintenance.testData")</option>
+                </select>
+            </div>
+            <div class="col-6 col-lg-2">
+                <label asp-for="ReviewDays" class="form-label mb-1">@T("employeeMaintenance.reviewAge")</label>
+                <div class="input-group">
+                    <input asp-for="ReviewDays" class="form-control" type="number" min="1" max="3650" />
+                    <span class="input-group-text">@T("employeeMaintenance.days")</span>
+                </div>
+            </div>
+            <div class="col-6 col-lg-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1">@T("employeeMaintenance.apply")</button>
+                <a asp-page="/Employees/Maintenance" class="btn btn-outline-secondary">@T("employeeMaintenance.clearFilters")</a>
+            </div>
+        </div>
+    </div>
+</form>
+
+@if (Model.SelectedEmployee is not null)
+{
+    var e = Model.SelectedEmployee;
+    <div class="card mb-3" id="employee-editor">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <strong>@F("employeeMaintenance.editTitle", e.EmployeeId)</strong>
+            <div class="d-flex gap-1 flex-wrap">
+                @if (e.IsTestData) { <span class="badge bg-secondary">@T("employeeMaintenance.testData")</span> }
+                @if (e.HasLiveAd) { <span class="badge bg-success">@T("employeeMaintenance.liveAd")</span> }
+                else { <span class="badge bg-secondary">@T("employeeMaintenance.noLiveAd")</span> }
+                @if (e.IsStale) { <span class="badge bg-secondary">@T("employeeMaintenance.stale")</span> }
+            </div>
+        </div>
+        <div class="card-body">
+            <form method="post" asp-page-handler="Save">
+                <input type="hidden" asp-for="Edit.EmployeeId" />
+                <input type="hidden" asp-for="EditId" />
+                <input type="hidden" asp-for="Search" />
+                <input type="hidden" asp-for="StatusFilter" />
+                <input type="hidden" asp-for="StateFilter" />
+                <input type="hidden" asp-for="ReviewDays" />
+                <input type="hidden" asp-for="PageNumber" />
+
+                <div class="row g-3">
+                    <div class="col-12 col-md-4">
+                        <label asp-for="Edit.GivenName" class="form-label">@T("employeeMaintenance.givenName")</label>
+                        <input asp-for="Edit.GivenName" class="form-control" />
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label asp-for="Edit.Surname" class="form-label">@T("employeeMaintenance.surname")</label>
+                        <input asp-for="Edit.Surname" class="form-control" />
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <label asp-for="Edit.Status" class="form-label">@T("employeeMaintenance.status")</label>
+                        <select asp-for="Edit.Status" class="form-select" disabled="@(string.Equals(e.Status, "Merged", StringComparison.OrdinalIgnoreCase) ? "disabled" : null)">
+                            @foreach (var status in Model.StatusOptions)
+                            {
+                                if (!string.Equals(status, "Merged", StringComparison.OrdinalIgnoreCase) || string.Equals(e.Status, "Merged", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <option value="@status">@StatusLabel(status)</option>
+                                }
+                            }
+                        </select>
+                        @if (string.Equals(e.Status, "Merged", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <input type="hidden" asp-for="Edit.Status" />
+                        }
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label asp-for="Edit.PrivateEmail" class="form-label">@T("employeeMaintenance.privateEmail")</label>
+                        <input asp-for="Edit.PrivateEmail" class="form-control" />
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label asp-for="Edit.MobilePhone" class="form-label">@T("employeeMaintenance.mobilePhone")</label>
+                        <input asp-for="Edit.MobilePhone" class="form-control" />
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input asp-for="Edit.IsTestData" class="form-check-input" />
+                            <label asp-for="Edit.IsTestData" class="form-check-label">@T("employeeMaintenance.markTest")</label>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <label asp-for="Edit.MaintenanceNote" class="form-label">@T("employeeMaintenance.maintenanceNote")</label>
+                        <textarea asp-for="Edit.MaintenanceNote" class="form-control" rows="2"></textarea>
+                        <div class="form-text">@T("employeeMaintenance.maintenanceNoteHelp")</div>
+                    </div>
+                </div>
+
+                <div class="row g-2 mt-2 small">
+                    <div class="col-12 col-lg-4"><strong>@T("employeeMaintenance.currentAdObject"):</strong><br />@(e.CurrentADObjectGuid?.ToString("D") ?? "-")</div>
+                    <div class="col-12 col-lg-4"><strong>@T("employeeMaintenance.sam"):</strong><br />@(string.IsNullOrWhiteSpace(e.CurrentSamAccountName) ? "-" : e.CurrentSamAccountName)</div>
+                    <div class="col-12 col-lg-4"><strong>@T("employeeMaintenance.upn"):</strong><br />@(string.IsNullOrWhiteSpace(e.CurrentUPN) ? "-" : e.CurrentUPN)</div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    @if (!string.Equals(e.Status, "Merged", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <button type="submit" class="btn btn-primary">@T("employeeMaintenance.save")</button>
+                    }
+                    <a asp-page="/Employees/Maintenance"
+                       asp-route-search="@Model.Search"
+                       asp-route-statusFilter="@Model.StatusFilter"
+                       asp-route-stateFilter="@Model.StateFilter"
+                       asp-route-reviewDays="@Model.ReviewDays"
+                       asp-route-pageNumber="@Model.PageNumber"
+                       class="btn btn-outline-secondary">@T("employeeMaintenance.close")</a>
+                </div>
+            </form>
+
+            @if (!string.Equals(e.Status, "Merged", StringComparison.OrdinalIgnoreCase))
+            {
+                <hr />
+                <div class="row g-3">
+                    <div class="col-12 col-lg-6">
+                        <form method="post" asp-page-handler="Review">
+                            <input type="hidden" name="employeeId" value="@e.EmployeeId" />
+                            <input type="hidden" asp-for="EditId" />
+                            <input type="hidden" asp-for="Search" />
+                            <input type="hidden" asp-for="StatusFilter" />
+                            <input type="hidden" asp-for="StateFilter" />
+                            <input type="hidden" asp-for="ReviewDays" />
+                            <input type="hidden" asp-for="PageNumber" />
+                            <button type="submit" class="btn btn-outline-primary">@T("employeeMaintenance.markReviewed")</button>
+                        </form>
+                    </div>
+                    <div class="col-12 col-lg-6">
+                        <p class="small text-muted mb-2">@T("employeeMaintenance.clearAdHelp")</p>
+                        <form method="post" asp-page-handler="ClearAdLink" onsubmit="return confirm(@Html.Raw(clearAdConfirm));">
+                            <input type="hidden" name="employeeId" value="@e.EmployeeId" />
+                            <input type="hidden" asp-for="EditId" />
+                            <input type="hidden" asp-for="Search" />
+                            <input type="hidden" asp-for="StatusFilter" />
+                            <input type="hidden" asp-for="StateFilter" />
+                            <input type="hidden" asp-for="ReviewDays" />
+                            <input type="hidden" asp-for="PageNumber" />
+                            <button type="submit" class="btn btn-outline-secondary" disabled="@(!e.CanClearAdLink ? "disabled" : null)">@T("employeeMaintenance.clearAdLink")</button>
+                        </form>
+                    </div>
+                </div>
+            }
+
+            <hr />
+            <h5>@T("employeeMaintenance.deleteTitle")</h5>
+            @if (!e.CanDelete)
+            {
+                <div class="alert alert-secondary mb-0">
+                    @if (e.HasProtectedHistory)
+                    {
+                        @T("employeeMaintenance.deleteBlocked")
+                        <div class="small mt-1">@F("employeeMaintenance.assignments", e.AssignmentCount) · @F("employeeMaintenance.requests", e.RequestCount)</div>
+                    }
+                    else if (string.Equals(e.Status, "Merged", StringComparison.OrdinalIgnoreCase))
+                    {
+                        @T("employeeMaintenance.message.mergedReadOnly")
+                    }
+                    else
+                    {
+                        @T("employeeMaintenance.message.deleteNotCandidate")
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="small text-muted">@T("employeeMaintenance.deleteHelp")</p>
+                <form method="post" asp-page-handler="Delete" onsubmit="return confirm(@Html.Raw(deleteConfirm));">
+                    <input type="hidden" name="employeeId" value="@e.EmployeeId" />
+                    <input type="hidden" asp-for="EditId" />
+                    <input type="hidden" asp-for="Search" />
+                    <input type="hidden" asp-for="StatusFilter" />
+                    <input type="hidden" asp-for="StateFilter" />
+                    <input type="hidden" asp-for="ReviewDays" />
+                    <input type="hidden" asp-for="PageNumber" />
+                    <div class="row g-2 align-items-end">
+                        <div class="col-12 col-lg-8">
+                            <label asp-for="DeleteReason" class="form-label">@T("employeeMaintenance.deleteReason")</label>
+                            <input asp-for="DeleteReason" class="form-control" placeholder="@T("employeeMaintenance.deleteReasonPlaceholder")" />
+                        </div>
+                        <div class="col-12 col-lg-4">
+                            <button type="submit" class="btn btn-danger w-100">@T("employeeMaintenance.delete")</button>
+                        </div>
+                    </div>
+                </form>
+            }
+
+            <hr />
+            <h5>@T("employeeMaintenance.auditTitle")</h5>
+            @if (Model.AuditRows.Count == 0)
+            {
+                <p class="text-muted mb-0">@T("employeeMaintenance.auditNone")</p>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>@T("employeeMaintenance.auditAction")</th>
+                                <th>@T("employeeMaintenance.auditWhen")</th>
+                                <th>@T("employeeMaintenance.auditBy")</th>
+                                <th>@T("employeeMaintenance.auditReason")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var audit in Model.AuditRows)
+                            {
+                                <tr>
+                                    <td>@AuditLabel(audit.Action)</td>
+                                    <td>@audit.ChangedAt.ToString("dd.MM.yyyy HH:mm")</td>
+                                    <td>@audit.ChangedBy</td>
+                                    <td>@audit.Reason</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>@T("employeeMaintenance.id")</th>
+                    <th>@T("employeeMaintenance.employee")</th>
+                    <th>@T("employeeMaintenance.identity")</th>
+                    <th>@T("employeeMaintenance.status")</th>
+                    <th>@T("employeeMaintenance.dataState")</th>
+                    <th>@T("employeeMaintenance.lastAssignment")</th>
+                    <th>@T("employeeMaintenance.reviewed")</th>
+                    <th>@T("employeeMaintenance.history")</th>
+                    <th data-sortable="false">@T("employeeMaintenance.action")</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Employees.Count == 0)
+                {
+                    <tr><td colspan="9" class="text-center text-muted py-4">@T("employeeMaintenance.noRows")</td></tr>
+                }
+                else
+                {
+                    @foreach (var employee in Model.Employees)
+                    {
+                        <tr>
+                            <td>@employee.EmployeeId</td>
+                            <td>
+                                <strong>@employee.DisplayName</strong>
+                                @if (!string.IsNullOrWhiteSpace(employee.PrivateEmail)) { <div class="small">@employee.PrivateEmail</div> }
+                                @if (!string.IsNullOrWhiteSpace(employee.MobilePhone)) { <div class="small text-muted">@employee.MobilePhone</div> }
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrWhiteSpace(employee.CurrentSamAccountName)) { <div>@employee.CurrentSamAccountName</div> }
+                                @if (!string.IsNullOrWhiteSpace(employee.CurrentUPN)) { <div class="small text-muted">@employee.CurrentUPN</div> }
+                            </td>
+                            <td>@StatusLabel(employee.Status)</td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-1">
+                                    @if (employee.IsTestData) { <span class="badge bg-secondary">@T("employeeMaintenance.testData")</span> }
+                                    @if (employee.HasLiveAd) { <span class="badge bg-success">@T("employeeMaintenance.liveAd")</span> }
+                                    else { <span class="badge bg-secondary">@T("employeeMaintenance.noLiveAd")</span> }
+                                    @if (employee.CurrentAssignmentCount > 0) { <span class="badge bg-primary">@T("employeeMaintenance.currentAssignment")</span> }
+                                    @if (employee.IsStale) { <span class="badge bg-secondary">@T("employeeMaintenance.stale")</span> }
+                                </div>
+                            </td>
+                            <td>@(employee.LastAssignmentDate?.ToString("dd.MM.yyyy") ?? "-")</td>
+                            <td>
+                                @if (employee.LastReviewedAt.HasValue)
+                                {
+                                    <div>@employee.LastReviewedAt.Value.ToString("dd.MM.yyyy HH:mm")</div>
+                                    @if (!string.IsNullOrWhiteSpace(employee.LastReviewedBy)) { <div class="small text-muted">@employee.LastReviewedBy</div> }
+                                }
+                                else
+                                {
+                                    <span class="text-muted">@T("employeeMaintenance.never")</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="small">@F("employeeMaintenance.assignments", employee.AssignmentCount)</div>
+                                <div class="small">@F("employeeMaintenance.requests", employee.RequestCount)</div>
+                            </td>
+                            <td>
+                                <a class="btn btn-sm btn-outline-primary"
+                                   asp-page="/Employees/Maintenance"
+                                   asp-route-search="@Model.Search"
+                                   asp-route-statusFilter="@Model.StatusFilter"
+                                   asp-route-stateFilter="@Model.StateFilter"
+                                   asp-route-reviewDays="@Model.ReviewDays"
+                                   asp-route-pageNumber="@Model.PageNumber"
+                                   asp-route-editId="@employee.EmployeeId"
+                                   asp-fragment="employee-editor">@T("employeeMaintenance.edit")</a>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (Model.TotalPages > 1)
+{
+    <nav class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+        <div class="text-muted small">@F("employeeMaintenance.pageOf", Model.PageNumber, Model.TotalPages)</div>
+        <div class="btn-group">
+            <a class="btn btn-outline-secondary @(Model.PageNumber <= 1 ? "disabled" : "")"
+               asp-page="/Employees/Maintenance"
+               asp-route-search="@Model.Search"
+               asp-route-statusFilter="@Model.StatusFilter"
+               asp-route-stateFilter="@Model.StateFilter"
+               asp-route-reviewDays="@Model.ReviewDays"
+               asp-route-pageNumber="@(Math.Max(1, Model.PageNumber - 1))">@T("employeeMaintenance.previous")</a>
+            <a class="btn btn-outline-secondary @(Model.PageNumber >= Model.TotalPages ? "disabled" : "")"
+               asp-page="/Employees/Maintenance"
+               asp-route-search="@Model.Search"
+               asp-route-statusFilter="@Model.StatusFilter"
+               asp-route-stateFilter="@Model.StateFilter"
+               asp-route-reviewDays="@Model.ReviewDays"
+               asp-route-pageNumber="@(Math.Min(Model.TotalPages, Model.PageNumber + 1))">@T("employeeMaintenance.next")</a>
+        </div>
+    </nav>
+}

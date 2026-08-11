@@ -80,6 +80,7 @@ SET
     LicenseLevel = @LicenseLevel,
     FulfillmentType = @FulfillmentType,
     AdGroupName = @AdGroupName,
+    LicenseCount = @LicenseCount,
     Active = @Active,
     SortOrder = @SortOrder,
     UpdatedAt = SYSDATETIME()
@@ -109,6 +110,7 @@ INSERT INTO dbo.LicenseProducts
     LicenseLevel,
     FulfillmentType,
     AdGroupName,
+    LicenseCount,
     Active,
     SortOrder,
     CreatedAt,
@@ -123,6 +125,7 @@ VALUES
     @LicenseLevel,
     @FulfillmentType,
     @AdGroupName,
+    @LicenseCount,
     @Active,
     @SortOrder,
     SYSDATETIME(),
@@ -192,10 +195,19 @@ SELECT
     LicenseLevel,
     FulfillmentType,
     AdGroupName,
+    LicenseCount,
     Active,
     SortOrder,
     CreatedAt,
-    UpdatedAt
+    UpdatedAt,
+    (
+        SELECT COUNT(*)
+        FROM dbo.LicenseAssignments AS assignment
+        WHERE assignment.LicenseProductId = dbo.LicenseProducts.LicenseProductId
+          AND assignment.Status = N'Active'
+          AND assignment.StartDate <= CAST(SYSDATETIME() AS date)
+          AND (assignment.IsPermanent = 1 OR assignment.EndDate IS NULL OR assignment.EndDate >= CAST(SYSDATETIME() AS date))
+    ) AS CurrentInUse
 FROM dbo.LicenseProducts
 WHERE (@ShowInactive = 1 OR Active = 1)
   AND
@@ -222,10 +234,12 @@ ORDER BY SortOrder, COALESCE(ProductFamily, Name), LicenseLevel, Name;";
                     LicenseLevel = reader.IsDBNull(4) ? null : reader.GetInt32(4),
                     FulfillmentType = GetString(reader, 5),
                     AdGroupName = GetString(reader, 6),
-                    Active = reader.GetBoolean(7),
-                    SortOrder = reader.GetInt32(8),
-                    CreatedAt = reader.GetDateTime(9),
-                    UpdatedAt = reader.GetDateTime(10)
+                    LicenseCount = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                    Active = reader.GetBoolean(8),
+                    SortOrder = reader.GetInt32(9),
+                    CreatedAt = reader.GetDateTime(10),
+                    UpdatedAt = reader.GetDateTime(11),
+                    CurrentInUse = reader.GetInt32(12)
                 });
             }
         }
@@ -243,6 +257,7 @@ SELECT
     LicenseLevel,
     FulfillmentType,
     AdGroupName,
+    LicenseCount,
     Active,
     SortOrder
 FROM dbo.LicenseProducts
@@ -262,8 +277,9 @@ WHERE LicenseProductId = @Id;";
                     LicenseLevel = reader.IsDBNull(4) ? null : reader.GetInt32(4),
                     FulfillmentType = GetString(reader, 5),
                     AdGroupName = GetString(reader, 6),
-                    Active = reader.GetBoolean(7),
-                    SortOrder = reader.GetInt32(8)
+                    LicenseCount = reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                    Active = reader.GetBoolean(8),
+                    SortOrder = reader.GetInt32(9)
                 };
             }
         }
@@ -292,6 +308,9 @@ WHERE LicenseProductId = @Id;";
         if (model.AdGroupName?.Length > 300)
             return "licenseProducts.validation.adGroupTooLong";
 
+        if (model.LicenseCount.HasValue && model.LicenseCount.Value < 0)
+            return "licenseProducts.validation.licenseCountNegative";
+
         return null;
     }
 
@@ -319,6 +338,7 @@ WHERE LicenseProductId = @Id;";
         cmd.Parameters.AddNullableInt("@LicenseLevel", model.LicenseLevel);
         cmd.Parameters.AddRequiredNVarChar("@FulfillmentType", model.FulfillmentType, 20);
         cmd.Parameters.AddNVarChar("@AdGroupName", model.AdGroupName, 300);
+        cmd.Parameters.AddNullableInt("@LicenseCount", model.LicenseCount);
         cmd.Parameters.AddBit("@Active", model.Active);
         cmd.Parameters.AddInt("@SortOrder", model.SortOrder);
     }
@@ -338,6 +358,7 @@ WHERE LicenseProductId = @Id;";
         public int? LicenseLevel { get; set; }
         public string FulfillmentType { get; set; } = "Manual";
         public string? AdGroupName { get; set; }
+        public int? LicenseCount { get; set; }
         public bool Active { get; set; } = true;
         public int SortOrder { get; set; } = 100;
     }
@@ -351,6 +372,8 @@ WHERE LicenseProductId = @Id;";
         public int? LicenseLevel { get; init; }
         public string FulfillmentType { get; init; } = "Manual";
         public string AdGroupName { get; init; } = "";
+        public int? LicenseCount { get; init; }
+        public int CurrentInUse { get; init; }
         public bool Active { get; init; }
         public int SortOrder { get; init; }
         public DateTime CreatedAt { get; init; }

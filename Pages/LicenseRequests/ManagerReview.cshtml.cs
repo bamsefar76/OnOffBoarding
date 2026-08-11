@@ -218,6 +218,7 @@ SELECT application.LicenseApplicationId,
        application.ManagerSamAccountName,
        application.ManagerDisplayName,
        application.BusinessReason,
+       application.ProjectNumber,
        application.Status,
        application.ManagerDecision,
        application.ManagerReason,
@@ -228,6 +229,9 @@ SELECT application.LicenseApplicationId,
        item.ItReason,
        item.FulfillmentType,
        item.AdGroupName,
+       item.StartDate,
+       item.EndDate,
+       item.IsPermanent,
        item.ProvisioningStatus,
        item.ProvisioningLastError
 FROM dbo.LicenseApplications AS application
@@ -252,22 +256,26 @@ ORDER BY product.Name;";
                 ManagerSam = Get(reader, 3),
                 ManagerName = Get(reader, 4),
                 BusinessReason = Get(reader, 5),
-                Status = Get(reader, 6),
-                ManagerDecision = Get(reader, 7),
-                ManagerReason = Get(reader, 8),
-                SubmittedAt = reader.GetDateTime(9)
+                ProjectNumber = Get(reader, 6),
+                Status = Get(reader, 7),
+                ManagerDecision = Get(reader, 8),
+                ManagerReason = Get(reader, 9),
+                SubmittedAt = reader.GetDateTime(10)
             };
 
             result.Items.Add(new ItemDetails
             {
-                Id = reader.GetInt64(10),
-                Name = Get(reader, 11),
-                Status = Get(reader, 12),
-                Reason = Get(reader, 13),
-                FulfillmentType = Get(reader, 14),
-                AdGroupName = Get(reader, 15),
-                ProvisioningStatus = Get(reader, 16),
-                ProvisioningLastError = Get(reader, 17)
+                Id = reader.GetInt64(11),
+                Name = Get(reader, 12),
+                Status = Get(reader, 13),
+                Reason = Get(reader, 14),
+                FulfillmentType = Get(reader, 15),
+                AdGroupName = Get(reader, 16),
+                StartDate = reader.GetDateTime(17),
+                EndDate = reader.IsDBNull(18) ? null : reader.GetDateTime(18),
+                IsPermanent = reader.GetBoolean(19),
+                ProvisioningStatus = Get(reader, 20),
+                ProvisioningLastError = Get(reader, 21)
             });
         }
 
@@ -285,6 +293,7 @@ ORDER BY product.Name;";
         public string ManagerSam { get; init; } = "";
         public string ManagerName { get; init; } = "";
         public string BusinessReason { get; init; } = "";
+        public string ProjectNumber { get; init; } = "";
         public string Status { get; init; } = "";
         public string ManagerDecision { get; init; } = "";
         public string ManagerReason { get; init; } = "";
@@ -303,6 +312,9 @@ ORDER BY product.Name;";
         public string Reason { get; init; } = "";
         public string FulfillmentType { get; init; } = "Manual";
         public string AdGroupName { get; init; } = "";
+        public DateTime StartDate { get; init; }
+        public DateTime? EndDate { get; init; }
+        public bool IsPermanent { get; init; }
         public string ProvisioningStatus { get; init; } = "";
         public string ProvisioningLastError { get; init; } = "";
     }

@@ -187,6 +187,20 @@ IF OBJECT_ID(N'dbo.ADUserChangeQueueGroups', N'U') IS NOT NULL
 IF OBJECT_ID(N'dbo.ADUserChangeQueueHistory', N'U') IS NOT NULL
     DELETE FROM dbo.ADUserChangeQueueHistory WHERE RequestId = @RequestId;
 
+-- Assignment license selections are staging/reservation rows owned by the queue request.
+-- Remove them before the parent request so deployments with the original NO ACTION FK
+-- can still delete requests safely.
+IF OBJECT_ID(N'dbo.AssignmentLicenseSelections', N'U') IS NOT NULL
+    DELETE FROM dbo.AssignmentLicenseSelections WHERE RequestId = @RequestId;
+
+-- A materialized license application is audit data and must survive deletion of the
+-- originating queue request. Detach only the optional provenance link.
+IF OBJECT_ID(N'dbo.LicenseApplications', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.LicenseApplications', N'SourceQueueRequestId') IS NOT NULL
+    UPDATE dbo.LicenseApplications
+       SET SourceQueueRequestId = NULL
+     WHERE SourceQueueRequestId = @RequestId;
+
 DELETE FROM dbo.ADUserChangeQueue
 WHERE RequestId = @RequestId
   AND ISNULL(Status, N'') <> N'Processing';";

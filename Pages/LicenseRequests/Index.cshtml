@@ -17,6 +17,20 @@
         ["licenseRequests.workflowManual"] = "Manual IT fulfillment",
         ["licenseRequests.workflowAdGroup"] = "Automatic after manager approval",
         ["licenseRequests.businessReason"] = "Business reason",
+        ["licenseRequests.projectNumber"] = "Project number",
+        ["licenseRequests.startDate"] = "Start date",
+        ["licenseRequests.endDate"] = "End date",
+        ["licenseRequests.endDateOptional"] = "Optional",
+        ["licenseRequests.validity"] = "Validity",
+        ["licenseRequests.licensePeriod"] = "License period",
+        ["licenseRequests.permanent"] = "Permanent",
+        ["licenseRequests.fixedPeriod"] = "End date",
+        ["licenseRequests.periodSingleNotice"] = "All licenses in one request must use the same license period. Submit a separate request if you need a different period.",
+        ["licenseRequests.costNotice"] = "Any additional license cost will be added to the project budget.",
+        ["licenseCapacity.payAsYouGo"] = "Pay as you go",
+        ["licenseCapacity.inUse"] = "{0} in use",
+        ["licenseCapacity.inUseOf"] = "{0} of {1} in use",
+        ["licenseCapacity.checkNotice"] = "License capacity is checked for the selected period when you submit the request.",
         ["licenseRequests.submit"] = "Submit to manager",
         ["licenseRequests.myRequests"] = "My license requests",
         ["licenseRequests.noApplications"] = "No applications found.",
@@ -34,6 +48,13 @@
         ["licenseRequests.validation.duplicateFamily"] = "Select only one license from product family '{0}'.",
         ["licenseRequests.validation.businessReasonRequired"] = "Business reason is required.",
         ["licenseRequests.validation.businessReasonTooLong"] = "Business reason cannot be longer than 2000 characters.",
+        ["licenseRequests.validation.startDateInvalid"] = "Enter a valid start date in dd.MM.yyyy format.",
+        ["licenseRequests.validation.endDateInvalid"] = "Enter a valid end date in dd.MM.yyyy format.",
+        ["licenseRequests.validation.endDateRequired"] = "Enter an end date or choose Permanent.",
+        ["licenseRequests.validation.periodTypeInvalid"] = "Choose an end date or Permanent for the license period.",
+        ["licenseRequests.validation.endBeforeStart"] = "End date cannot be before start date.",
+        ["licenseRequests.validation.projectNumberMissing"] = "No active project number could be found for your user. Contact your manager or IT.",
+        ["licenseRequests.validation.capacityExceeded"] = "License '{0}' has no remaining capacity for the selected period ({1} of {2} already reserved).",
         ["licenseRequests.error.publicBaseUrlMissing"] = "The public application URL is not configured. Contact IT.",
         ["licenseRequests.error.publicBaseUrlInvalid"] = "The configured public application URL is invalid. Contact IT.",
         ["licenseRequests.error.submitFailed"] = "The license application could not be submitted.",
@@ -46,6 +67,7 @@
         ["licenseStatus.itRejected"] = "Rejected by IT",
         ["licenseStatus.provisioning"] = "Provisioning",
         ["licenseStatus.provisioningFailed"] = "Provisioning failed",
+        ["licenseStatus.deprovisioningFailed"] = "Removal failed",
         ["licenseProvisioning.pending"] = "Queued",
         ["licenseProvisioning.processing"] = "Processing",
         ["licenseProvisioning.completed"] = "Provisioned",
@@ -72,6 +94,7 @@
         "ITRejected" => T("licenseStatus.itRejected"),
         "Provisioning" => T("licenseStatus.provisioning"),
         "ProvisioningFailed" => T("licenseStatus.provisioningFailed"),
+        "DeprovisioningFailed" => T("licenseStatus.deprovisioningFailed"),
         _ => status
     };
 
@@ -89,7 +112,7 @@
         "Approved" or "Completed" => "app-status-badge app-status-badge-success",
         "PartiallyApproved" => "app-status-badge app-status-badge-info",
         "Provisioning" => "app-status-badge app-status-badge-info",
-        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "app-status-badge app-status-badge-danger",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" or "DeprovisioningFailed" => "app-status-badge app-status-badge-danger",
         _ => "app-status-badge app-status-badge-secondary"
     };
 
@@ -100,7 +123,7 @@
         "Approved" or "Completed" => "license-request-approved",
         "PartiallyApproved" => "license-request-partial",
         "Provisioning" => "license-request-partial",
-        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "license-request-rejected",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" or "DeprovisioningFailed" => "license-request-rejected",
         _ => "license-request-other"
     };
 
@@ -114,6 +137,17 @@
         "licenseRequests.validation.duplicateFamily" => F("licenseRequests.validation.duplicateFamily", issue.Argument ?? ""),
         "licenseRequests.validation.businessReasonRequired" => T("licenseRequests.validation.businessReasonRequired"),
         "licenseRequests.validation.businessReasonTooLong" => T("licenseRequests.validation.businessReasonTooLong"),
+        "licenseRequests.validation.startDateInvalid" => T("licenseRequests.validation.startDateInvalid"),
+        "licenseRequests.validation.endDateInvalid" => T("licenseRequests.validation.endDateInvalid"),
+        "licenseRequests.validation.endDateRequired" => T("licenseRequests.validation.endDateRequired"),
+        "licenseRequests.validation.periodTypeInvalid" => T("licenseRequests.validation.periodTypeInvalid"),
+        "licenseRequests.validation.endBeforeStart" => T("licenseRequests.validation.endBeforeStart"),
+        "licenseRequests.validation.projectNumberMissing" => T("licenseRequests.validation.projectNumberMissing"),
+        "licenseRequests.validation.capacityExceeded" => F(
+            "licenseRequests.validation.capacityExceeded",
+            issue.Argument ?? "",
+            issue.Current ?? 0,
+            issue.Limit ?? 0),
         _ => ""
     };
 
@@ -170,13 +204,17 @@
     <div class="card mb-4">
         <div class="card-body">
             <div class="row g-3">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <div class="license-request-label">@T("licenseRequests.requestedFor")</div>
                     <div class="fw-semibold">@Model.CurrentUser.DisplayName</div>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <div class="license-request-label">@T("licenseRequests.manager")</div>
                     <div class="fw-semibold">@Model.CurrentUser.ManagerName</div>
+                </div>
+                <div class="col-md-4">
+                    <div class="license-request-label">@T("licenseRequests.projectNumber")</div>
+                    <div class="fw-semibold">@(string.IsNullOrWhiteSpace(Model.CurrentUser.ProjectNumber) ? T("common.notProvided") : Model.CurrentUser.ProjectNumber)</div>
                 </div>
             </div>
         </div>
@@ -238,12 +276,69 @@
                                         }
                                     </div>
                                 }
+
+                                <div class="small mt-2">
+                                    @if (!license.LicenseCount.HasValue || license.LicenseCount.Value <= 0)
+                                    {
+                                        <span class="badge app-status-badge app-status-badge-info">@T("licenseCapacity.payAsYouGo")</span>
+                                        <span class="text-body-secondary ms-1">@F("licenseCapacity.inUse", license.CurrentInUse)</span>
+                                    }
+                                    else
+                                    {
+                                        var usageClass = license.CurrentInUse >= license.LicenseCount.Value
+                                            ? "app-status-badge-danger"
+                                            : "app-status-badge-success";
+                                        <span class="badge app-status-badge @usageClass">
+                                            @F("licenseCapacity.inUseOf", license.CurrentInUse, license.LicenseCount.Value)
+                                        </span>
+                                    }
+                                </div>
                             </div>
                         </div>
                     </div>
                 }
             </div>
         }
+
+        <div id="license-period-panel" class="card mb-3 @(Model.SelectedLicenseIds.Count == 0 ? "d-none" : "")">
+            <div class="card-body p-3">
+                <h3 class="h6 mb-3">@T("licenseRequests.licensePeriod")</h3>
+
+                <div class="alert alert-info py-2 mb-2" role="note">
+                    @T("licenseRequests.periodSingleNotice")
+                </div>
+                <div class="alert alert-warning py-2 mb-2" role="note">
+                    @T("licenseRequests.costNotice")
+                </div>
+                <div class="small text-body-secondary mb-3">
+                    @T("licenseCapacity.checkNotice")
+                </div>
+
+                <div class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label asp-for="StartDateText" class="form-label">@T("licenseRequests.startDate")</label>
+                        <input asp-for="StartDateText" class="form-control" inputmode="numeric" placeholder="dd.MM.yyyy" />
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-label">@T("licenseRequests.licensePeriod")</div>
+                        <div class="d-flex flex-wrap gap-3 pt-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" asp-for="PeriodType" value="Permanent" id="license-period-permanent" />
+                                <label class="form-check-label" for="license-period-permanent">@T("licenseRequests.permanent")</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" asp-for="PeriodType" value="Fixed" id="license-period-fixed" />
+                                <label class="form-check-label" for="license-period-fixed">@T("licenseRequests.fixedPeriod")</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="license-end-date-field" class="col-md-4 @(string.Equals(Model.PeriodType, "Fixed", StringComparison.OrdinalIgnoreCase) ? "" : "d-none")">
+                        <label asp-for="EndDateText" class="form-label">@T("licenseRequests.endDate")</label>
+                        <input asp-for="EndDateText" class="form-control" inputmode="numeric" placeholder="dd.MM.yyyy" />
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div class="mb-3">
             <label asp-for="BusinessReason" class="form-label">@T("licenseRequests.businessReason")</label>
@@ -291,6 +386,7 @@
                                     {
                                         <li>
                                             @item.Name
+                                            <span class="small text-body-secondary"> · @item.StartDate.ToString("dd.MM.yyyy") – @(item.IsPermanent ? T("licenseRequests.permanent") : item.EndDate?.ToString("dd.MM.yyyy"))</span>
                                             @if (item.FulfillmentType == "AdGroup" && !string.IsNullOrWhiteSpace(item.ProvisioningStatus))
                                             {
                                                 var provisioningText = item.ProvisioningStatus switch
@@ -306,6 +402,10 @@
                                         </li>
                                     }
                                 </ul>
+                            </div>
+                            <div class="col-lg-3">
+                                <div class="license-request-label">@T("licenseRequests.projectNumber")</div>
+                                <div>@(string.IsNullOrWhiteSpace(application.ProjectNumber) ? T("common.notProvided") : application.ProjectNumber)</div>
                             </div>
                             <div class="col-lg-3">
                                 <div class="license-request-label">@T("licenseRequests.submitted")</div>
@@ -391,6 +491,24 @@
 <script>
 (() => {
     const boxes = [...document.querySelectorAll(".license-box")];
+    const periodPanel = document.getElementById("license-period-panel");
+    const permanentRadio = document.getElementById("license-period-permanent");
+    const fixedRadio = document.getElementById("license-period-fixed");
+    const endDateField = document.getElementById("license-end-date-field");
+    const endDateInput = document.getElementById("EndDateText");
+
+    function refreshPeriod() {
+        const hasSelection = boxes.some(x => x.checked);
+        periodPanel?.classList.toggle("d-none", !hasSelection);
+
+        const isFixed = fixedRadio?.checked === true;
+        endDateField?.classList.toggle("d-none", !isFixed);
+        if (endDateInput) {
+            endDateInput.disabled = !isFixed;
+            endDateInput.required = isFixed;
+            if (!isFixed) endDateInput.value = "";
+        }
+    }
 
     function refresh() {
         const selectedFamilies = new Set(
@@ -409,9 +527,13 @@
             box.closest(".license-card")
                 ?.classList.toggle("opacity-50", disabled);
         }
+
+        refreshPeriod();
     }
 
     boxes.forEach(x => x.addEventListener("change", refresh));
+    permanentRadio?.addEventListener("change", refreshPeriod);
+    fixedRadio?.addEventListener("change", refreshPeriod);
     refresh();
 })();
 </script>

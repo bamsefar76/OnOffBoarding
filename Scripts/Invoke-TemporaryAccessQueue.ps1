@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$AppSettingsPath = 'C:\inetpub\UserChangeQueueWeb\appsettings.json',
     [string]$ConnectionString,
@@ -325,6 +325,10 @@ DECLARE @ManagerSam nvarchar(256);
 DECLARE @ManagerName nvarchar(300);
 DECLARE @ManagerEmail nvarchar(320);
 DECLARE @BusinessReason nvarchar(2000);
+DECLARE @ProjectNumber nvarchar(100);
+DECLARE @StartDate date;
+DECLARE @EndDate date;
+DECLARE @IsPermanent bit;
 
 BEGIN TRANSACTION;
 
@@ -358,13 +362,17 @@ SELECT
     @UserName=COALESCE(NULLIF(LTRIM(RTRIM(queueItem.NewDisplayName)),N''),NULLIF(LTRIM(RTRIM(queueItem.TargetSamAccountName)),N''),NULLIF(LTRIM(RTRIM(queueItem.NewSamAccountName)),N''),N''),
     @UserEmail=COALESCE(NULLIF(LTRIM(RTRIM(queueItem.Mail)),N''),NULLIF(LTRIM(RTRIM(queueItem.NewUserPrincipalName)),N''),N''),
     @ManagerSam=NULLIF(LTRIM(RTRIM(queueItem.ManagerSamAccountName)),N''),
-    @BusinessReason=MAX(selection.BusinessReason)
+    @BusinessReason=MAX(selection.BusinessReason),
+    @ProjectNumber=COALESCE(MAX(NULLIF(LTRIM(RTRIM(selection.ProjectNumber)),N'')),NULLIF(LTRIM(RTRIM(queueItem.ProjectNumber)),N'')),
+    @StartDate=MIN(COALESCE(selection.StartDate,queueItem.StartDate,CAST(@Now AS date))),
+    @EndDate=MAX(COALESCE(selection.EndDate,queueItem.EndDate)),
+    @IsPermanent=CAST(MIN(CAST(selection.IsPermanent AS tinyint)) AS bit)
 FROM dbo.ADUserChangeQueue queueItem
 INNER JOIN dbo.AssignmentLicenseSelections selection
     ON selection.RequestId=queueItem.RequestId
 WHERE queueItem.RequestId=@RequestId
 GROUP BY queueItem.TargetSamAccountName,queueItem.NewSamAccountName,queueItem.NewDisplayName,
-         queueItem.Mail,queueItem.NewUserPrincipalName,queueItem.ManagerSamAccountName;
+         queueItem.Mail,queueItem.NewUserPrincipalName,queueItem.ManagerSamAccountName,queueItem.ProjectNumber;
 
 SELECT TOP(1)
     @ManagerName=COALESCE(NULLIF(LTRIM(RTRIM(manager.DisplayName)),N''),@ManagerSam),
@@ -373,12 +381,13 @@ FROM dbo.ADObjects manager
 WHERE manager.SamAccountName=@ManagerSam
   AND ISNULL(manager.IsDeleted,0)=0;
 
-IF NULLIF(@UserSam,N'') IS NULL OR NULLIF(@ManagerSam,N'') IS NULL OR NULLIF(@ManagerEmail,N'') IS NULL
+IF NULLIF(@UserSam,N'') IS NULL OR NULLIF(@ManagerSam,N'') IS NULL OR NULLIF(@ManagerEmail,N'') IS NULL OR NULLIF(@ProjectNumber,N'') IS NULL
 BEGIN
     DECLARE @Error nvarchar(2000)=CONCAT(
         N'Assignment license activation is waiting for required identity data. UserSam=',COALESCE(@UserSam,N'<missing>'),
         N'; ManagerSam=',COALESCE(@ManagerSam,N'<missing>'),
-        N'; ManagerEmail=',COALESCE(@ManagerEmail,N'<missing>'));
+        N'; ManagerEmail=',COALESCE(@ManagerEmail,N'<missing>'),
+        N'; ProjectNumber=',COALESCE(@ProjectNumber,N'<missing>'));
 
     UPDATE dbo.AssignmentLicenseSelections
     SET LastError=@Error
@@ -405,6 +414,10 @@ BEGIN
         ManagerDisplayName,
         ManagerEmail,
         BusinessReason,
+        ProjectNumber,
+        StartDate,
+        EndDate,
+        IsPermanent,
         Status,
         SubmittedAt,
         SourceQueueRequestId
@@ -412,7 +425,7 @@ BEGIN
     VALUES
     (
         @UserSam,@UserName,@UserEmail,@ManagerSam,@ManagerName,@ManagerEmail,
-        @BusinessReason,N'AwaitingManager',@Now,@RequestId
+        @BusinessReason,@ProjectNumber,@StartDate,@EndDate,@IsPermanent,N'AwaitingManager',@Now,@RequestId
     );
     SET @ApplicationId=SCOPE_IDENTITY();
 END;
@@ -424,6 +437,9 @@ INSERT INTO dbo.LicenseApplicationItems
     Status,
     FulfillmentType,
     AdGroupName,
+    StartDate,
+    EndDate,
+    IsPermanent,
     ProvisioningStatus
 )
 SELECT
@@ -432,10 +448,15 @@ SELECT
     N'Pending',
     ISNULL(NULLIF(selection.FulfillmentType,N''),N'Manual'),
     NULLIF(selection.AdGroupName,N''),
+    COALESCE(selection.StartDate, queueItem.StartDate, CAST(@Now AS date)),
+    COALESCE(selection.EndDate, queueItem.EndDate),
+    selection.IsPermanent,
     NULL
 FROM dbo.AssignmentLicenseSelections selection
 INNER JOIN dbo.LicenseProducts product
     ON product.LicenseProductId=selection.LicenseProductId
+INNER JOIN dbo.ADUserChangeQueue queueItem
+    ON queueItem.RequestId=selection.RequestId
 WHERE selection.RequestId=@RequestId
   AND NOT EXISTS
   (
@@ -555,6 +576,8 @@ DECLARE @Now datetime2(0)=SYSDATETIME();
     WHERE item.FulfillmentType=N'AdGroup'
       AND NULLIF(LTRIM(RTRIM(item.AdGroupName)),N'') IS NOT NULL
       AND application.ManagerDecision=N'Approved'
+      AND item.StartDate <= CAST(@Now AS date)
+      AND (item.EndDate IS NULL OR item.EndDate >= CAST(@Now AS date))
       AND
       (
           item.ProvisioningStatus=N'Pending'
@@ -581,7 +604,12 @@ OUTPUT
     application.RequestedForEmail,
     INSERTED.AdGroupName,
     product.Name,
-    application.BusinessReason
+    application.BusinessReason,
+    INSERTED.LicenseProductId,
+    application.ProjectNumber,
+    INSERTED.StartDate,
+    INSERTED.EndDate,
+    INSERTED.IsPermanent
 FROM dbo.LicenseApplicationItems item
 INNER JOIN Candidate candidate
     ON candidate.LicenseApplicationItemId=item.LicenseApplicationItemId
@@ -604,6 +632,11 @@ INNER JOIN dbo.LicenseProducts product
                 AdGroupName=$r.GetString(5)
                 DisplayName=$r.GetString(6)
                 Reason=if($r.IsDBNull(7)){''}else{$r.GetString(7)}
+                ProductId=$r.GetInt32(8)
+                ProjectNumber=if($r.IsDBNull(9)){''}else{$r.GetString(9)}
+                StartDate=$r.GetDateTime(10)
+                EndDate=if($r.IsDBNull(11)){$null}else{$r.GetDateTime(11)}
+                IsPermanent=$r.GetBoolean(12)
                 LockId=$lockId
             }
         } finally { $r.Dispose() }
@@ -713,7 +746,11 @@ function Get-LicenseList {
     $cmd=$Connection.CreateCommand()
     try {
         $cmd.CommandText=@'
-SELECT product.Name
+SELECT CONCAT(
+    product.Name,
+    N' (',CONVERT(nvarchar(10),item.StartDate,104),
+    CASE WHEN item.EndDate IS NULL THEN N'' ELSE N' – ' + CONVERT(nvarchar(10),item.EndDate,104) END,
+    N')')
 FROM dbo.LicenseApplicationItems item
 INNER JOIN dbo.LicenseProducts product ON product.LicenseProductId=item.LicenseProductId
 WHERE item.LicenseApplicationId=@ApplicationId
@@ -744,11 +781,40 @@ SET ProvisioningStatus=N'Completed',
     ProvisionedAt=SYSDATETIME(),
     WasAdGroupMemberBefore=@Before,
     MembershipAddedBySystem=@Added,
+    DeprovisioningStatus=CASE WHEN IsPermanent=0 THEN N'Pending' ELSE NULL END,
+    DeprovisioningAttemptCount=CASE WHEN IsPermanent=0 THEN 0 ELSE DeprovisioningAttemptCount END,
+    DeprovisioningLastError=NULL,
     ProvisioningLastError=NULL,
     ProvisioningLockId=NULL,
     ProvisioningLockedAt=NULL
 WHERE LicenseApplicationItemId=@Id AND ProvisioningLockId=@LockId;
-'@ @{ '@Id'=$Item.Id; '@LockId'=$Item.LockId; '@Before'=$alreadyMember; '@Added'=$added })
+
+IF NOT EXISTS (SELECT 1 FROM dbo.LicenseAssignments WHERE LicenseApplicationItemId=@Id)
+BEGIN
+    INSERT INTO dbo.LicenseAssignments
+    (
+        LicenseApplicationItemId,LicenseApplicationId,LicenseProductId,
+        UserSamAccountName,UserDisplayName,UserEmail,ProjectNumber,
+        StartDate,EndDate,IsPermanent,FulfillmentType,AdGroupName,Status,ActivatedAt,ActivatedBy
+    )
+    VALUES
+    (
+        @Id,@ApplicationId,@ProductId,@UserSam,@UserName,@UserEmail,NULLIF(@ProjectNumber,N''),
+        @StartDate,@EndDate,@IsPermanent,N'AdGroup',@AdGroupName,N'Active',SYSDATETIME(),N'License AD-group worker'
+    );
+END
+ELSE
+BEGIN
+    UPDATE dbo.LicenseAssignments
+    SET Status=N'Active',StartDate=@StartDate,EndDate=@EndDate,IsPermanent=@IsPermanent,
+        ActivatedAt=COALESCE(ActivatedAt,SYSDATETIME()),
+        ActivatedBy=COALESCE(ActivatedBy,N'License AD-group worker'),UpdatedAt=SYSDATETIME()
+    WHERE LicenseApplicationItemId=@Id;
+END;
+'@ @{ '@Id'=$Item.Id; '@LockId'=$Item.LockId; '@Before'=$alreadyMember; '@Added'=$added;
+      '@ApplicationId'=$Item.ApplicationId; '@ProductId'=$Item.ProductId; '@UserSam'=$Item.UserSamAccountName;
+      '@UserName'=$Item.UserDisplayName; '@UserEmail'=$Item.UserEmail; '@ProjectNumber'=$Item.ProjectNumber;
+      '@StartDate'=$Item.StartDate; '@EndDate'=$Item.EndDate; '@IsPermanent'=$Item.IsPermanent; '@AdGroupName'=$Item.AdGroupName })
 
     $applicationStatus=Update-LicenseApplicationStatus $Connection $Item.ApplicationId
     if($applicationStatus -eq 'Completed'){
@@ -771,6 +837,148 @@ WHERE LicenseApplicationItemId=@Id AND ProvisioningLockId=@LockId;
     } else {
         Write-Log "License '$($Item.DisplayName)': added '$($Item.UserSamAccountName)' to '$($Item.AdGroupName)'."
     }
+}
+
+function Claim-LicenseRemovalWorkItem {
+    param([System.Data.SqlClient.SqlConnection]$Connection)
+    $lockId=[guid]::NewGuid()
+    $cmd=$Connection.CreateCommand()
+    try {
+        $cmd.CommandText=@'
+SET NOCOUNT ON;
+DECLARE @Now datetime2(0)=SYSDATETIME();
+;WITH Candidate AS
+(
+    SELECT TOP(1) item.LicenseApplicationItemId
+    FROM dbo.LicenseApplicationItems item WITH(UPDLOCK,READPAST,ROWLOCK)
+    INNER JOIN dbo.LicenseApplications application
+        ON application.LicenseApplicationId=item.LicenseApplicationId
+    WHERE item.FulfillmentType=N'AdGroup'
+      AND item.ProvisioningStatus=N'Completed'
+      AND item.IsPermanent=0
+      AND item.EndDate IS NOT NULL
+      AND item.EndDate < CAST(@Now AS date)
+      AND
+      (
+          item.DeprovisioningStatus=N'Pending'
+          OR
+          (
+              item.DeprovisioningStatus=N'Processing'
+              AND item.DeprovisioningLockedAt<DATEADD(MINUTE,-30,@Now)
+          )
+      )
+    ORDER BY item.EndDate,item.LicenseApplicationItemId
+)
+UPDATE item
+SET DeprovisioningStatus=N'Processing',
+    DeprovisioningLockId=@LockId,
+    DeprovisioningLockedAt=@Now,
+    DeprovisioningLastAttemptAt=@Now,
+    DeprovisioningAttemptCount=DeprovisioningAttemptCount+1,
+    DeprovisioningLastError=NULL
+OUTPUT
+    INSERTED.LicenseApplicationItemId,
+    INSERTED.LicenseApplicationId,
+    application.RequestedForSamAccountName,
+    application.RequestedForDisplayName,
+    application.RequestedForEmail,
+    INSERTED.AdGroupName,
+    product.Name,
+    INSERTED.MembershipAddedBySystem,
+    INSERTED.LicenseProductId,
+    application.ProjectNumber,
+    INSERTED.StartDate,
+    INSERTED.EndDate
+FROM dbo.LicenseApplicationItems item
+INNER JOIN Candidate candidate
+    ON candidate.LicenseApplicationItemId=item.LicenseApplicationItemId
+INNER JOIN dbo.LicenseApplications application
+    ON application.LicenseApplicationId=item.LicenseApplicationId
+INNER JOIN dbo.LicenseProducts product
+    ON product.LicenseProductId=item.LicenseProductId;
+'@
+        [void]$cmd.Parameters.Add('@LockId',[System.Data.SqlDbType]::UniqueIdentifier)
+        $cmd.Parameters['@LockId'].Value=$lockId
+        $r=$cmd.ExecuteReader()
+        try {
+            if(-not $r.Read()){ return $null }
+            return [pscustomobject]@{
+                Id=$r.GetInt64(0)
+                ApplicationId=$r.GetInt64(1)
+                UserSamAccountName=$r.GetString(2)
+                UserDisplayName=if($r.IsDBNull(3)){''}else{$r.GetString(3)}
+                UserEmail=if($r.IsDBNull(4)){''}else{$r.GetString(4)}
+                AdGroupName=$r.GetString(5)
+                DisplayName=$r.GetString(6)
+                MembershipAddedBySystem=$r.GetBoolean(7)
+                ProductId=$r.GetInt32(8)
+                ProjectNumber=if($r.IsDBNull(9)){''}else{$r.GetString(9)}
+                StartDate=$r.GetDateTime(10)
+                EndDate=$r.GetDateTime(11)
+                LockId=$lockId
+            }
+        } finally { $r.Dispose() }
+    } finally { $cmd.Dispose() }
+}
+
+function Complete-LicenseRemove {
+    param([System.Data.SqlClient.SqlConnection]$Connection,$Item)
+    Import-Module ActiveDirectory -ErrorAction Stop
+    $user=Get-ADUser -Identity $Item.UserSamAccountName -ErrorAction Stop
+    $group=Get-ADGroup -Identity $Item.AdGroupName -ErrorAction Stop
+
+    if($Item.MembershipAddedBySystem){
+        $isMember=[bool](Get-ADGroupMember -Identity $group -Recursive:$false | Where-Object{$_.DistinguishedName -eq $user.DistinguishedName}|Select-Object -First 1)
+        if($isMember){ Remove-ADGroupMember -Identity $group -Members $user -Confirm:$false -ErrorAction Stop }
+    }
+
+    [void](Invoke-SqlNonQuery $Connection @'
+UPDATE dbo.LicenseApplicationItems
+SET DeprovisioningStatus=N'Completed',
+    DeprovisionedAt=SYSDATETIME(),
+    DeprovisioningLastError=NULL,
+    DeprovisioningLockId=NULL,
+    DeprovisioningLockedAt=NULL
+WHERE LicenseApplicationItemId=@Id AND DeprovisioningLockId=@LockId;
+
+UPDATE dbo.LicenseAssignments
+SET Status=N'Ended',EndedAt=COALESCE(EndedAt,SYSDATETIME()),
+    EndedBy=COALESCE(EndedBy,N'License AD-group worker'),UpdatedAt=SYSDATETIME()
+WHERE LicenseApplicationItemId=@Id;
+
+UPDATE dbo.LicenseApplications
+SET Status=N'Completed'
+WHERE LicenseApplicationId=@ApplicationId
+  AND Status=N'DeprovisioningFailed'
+  AND NOT EXISTS
+  (
+      SELECT 1 FROM dbo.LicenseApplicationItems
+      WHERE LicenseApplicationId=@ApplicationId
+        AND DeprovisioningStatus=N'Failed'
+  );
+'@ @{ '@Id'=$Item.Id; '@LockId'=$Item.LockId; '@ApplicationId'=$Item.ApplicationId })
+
+    if($Item.MembershipAddedBySystem){
+        Write-Log "License '$($Item.DisplayName)': removed '$($Item.UserSamAccountName)' from '$($Item.AdGroupName)' after end date $($Item.EndDate.ToString('dd.MM.yyyy'))."
+    } else {
+        Write-Log "License '$($Item.DisplayName)': end date reached, but membership in '$($Item.AdGroupName)' predated this assignment and was not removed."
+    }
+}
+
+function Fail-LicenseRemovalItem {
+    param([System.Data.SqlClient.SqlConnection]$Connection,$Item,[string]$Message)
+    [void](Invoke-SqlNonQuery $Connection @'
+UPDATE dbo.LicenseApplicationItems
+SET DeprovisioningStatus=N'Failed',
+    DeprovisioningLastError=@Error,
+    DeprovisioningLockId=NULL,
+    DeprovisioningLockedAt=NULL
+WHERE LicenseApplicationItemId=@Id AND DeprovisioningLockId=@LockId;
+
+UPDATE dbo.LicenseApplications
+SET Status=N'DeprovisioningFailed'
+WHERE LicenseApplicationId=@ApplicationId;
+'@ @{ '@Id'=$Item.Id; '@LockId'=$Item.LockId; '@ApplicationId'=$Item.ApplicationId; '@Error'=$Message })
 }
 
 function Fail-LicenseItem {
@@ -798,6 +1006,11 @@ SELECT CASE
      AND COL_LENGTH(N'dbo.LicenseApplicationItems',N'FulfillmentType') IS NOT NULL
      AND COL_LENGTH(N'dbo.LicenseApplicationItems',N'ProvisioningStatus') IS NOT NULL
      AND COL_LENGTH(N'dbo.LicenseApplicationItems',N'ProvisioningLockId') IS NOT NULL
+     AND COL_LENGTH(N'dbo.LicenseApplicationItems',N'StartDate') IS NOT NULL
+     AND COL_LENGTH(N'dbo.LicenseApplicationItems',N'IsPermanent') IS NOT NULL
+     AND COL_LENGTH(N'dbo.LicenseAssignments',N'IsPermanent') IS NOT NULL
+     AND COL_LENGTH(N'dbo.LicenseApplicationItems',N'DeprovisioningStatus') IS NOT NULL
+     AND OBJECT_ID(N'dbo.LicenseAssignments',N'U') IS NOT NULL
     THEN 1 ELSE 0 END;
 '@)
         if(-not $licenseFulfillmentEnabled){
@@ -807,7 +1020,14 @@ SELECT CASE
         $assignmentLicenseEnabled=[bool](Invoke-SqlScalar $connection @'
 SELECT CASE
     WHEN OBJECT_ID(N'dbo.AssignmentLicenseSelections',N'U') IS NOT NULL
+     AND COL_LENGTH(N'dbo.AssignmentLicenseSelections',N'StartDate') IS NOT NULL
+     AND COL_LENGTH(N'dbo.AssignmentLicenseSelections',N'IsPermanent') IS NOT NULL
+     AND COL_LENGTH(N'dbo.AssignmentLicenseSelections',N'ProjectNumber') IS NOT NULL
      AND COL_LENGTH(N'dbo.LicenseApplications',N'SourceQueueRequestId') IS NOT NULL
+     AND COL_LENGTH(N'dbo.LicenseApplications',N'ProjectNumber') IS NOT NULL
+     AND COL_LENGTH(N'dbo.LicenseApplications',N'IsPermanent') IS NOT NULL
+     AND COL_LENGTH(N'dbo.LicenseApplicationItems',N'StartDate') IS NOT NULL
+     AND COL_LENGTH(N'dbo.LicenseApplicationItems',N'IsPermanent') IS NOT NULL
     THEN 1 ELSE 0 END;
 '@)
         $assignmentLicenseActivated=0
@@ -856,6 +1076,23 @@ SELECT CASE
                     $m=$_.Exception.Message
                     Fail-LicenseItem $connection $licenseItem $m
                     Write-Log "Failed license provisioning item $($licenseItem.Id) for application $($licenseItem.ApplicationId): $m" 'ERROR'
+                }
+                $processed++
+                $licenseProcessed++
+                $didWork=$true
+            }
+
+            if($processed -ge $MaxItems){ break }
+
+            $licenseRemoval=$null
+            if($licenseFulfillmentEnabled){ $licenseRemoval=Claim-LicenseRemovalWorkItem $connection }
+            if($null -ne $licenseRemoval){
+                try{
+                    Complete-LicenseRemove $connection $licenseRemoval
+                }catch{
+                    $m=$_.Exception.Message
+                    Fail-LicenseRemovalItem $connection $licenseRemoval $m
+                    Write-Log "Failed license removal item $($licenseRemoval.Id) for application $($licenseRemoval.ApplicationId): $m" 'ERROR'
                 }
                 $processed++
                 $licenseProcessed++

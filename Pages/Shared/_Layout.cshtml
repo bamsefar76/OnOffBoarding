@@ -17,6 +17,7 @@
         ["nav.organisation"] = "Organisation",
         ["nav.employees"] = "Employees",
         ["nav.duplicates"] = "Duplicate review",
+        ["nav.employeeMaintenance"] = "Employee maintenance",
         ["nav.newUser"] = "New user",
         ["nav.updateUser"] = "Update user",
         ["nav.addAssignment"] = "Add assignment",
@@ -25,6 +26,7 @@
         ["nav.upcomingChanges"] = "Upcoming",
         ["nav.reports"] = "Reports",
         ["nav.cfoReport"] = "CFO report",
+        ["nav.licenseAssignments"] = "License assignments",
         ["nav.settings"] = "Settings",
         ["nav.groupRules"] = "Group rules",
         ["nav.translations"] = "Translations",
@@ -69,7 +71,8 @@
 
     var canOpenOrganisation = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Organisation/Tree");
     var canOpenDuplicates = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Employees/Duplicates");
-    var canOpenEmployees = canOpenDuplicates;
+    var canOpenEmployeeMaintenance = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Employees/Maintenance");
+    var canOpenEmployees = canOpenDuplicates || canOpenEmployeeMaintenance;
     var canOpenUserChangeQueue = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/NewUser");
     var canOpenUpdateUser = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/UpdateUser");
     var canOpenAddAssignment = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Assignments/Create");
@@ -79,6 +82,7 @@
         (await PageAccessService.UserHasAccessAsync(currentUserName, "/Requests/Upcoming")
          || accessScope.HasScopedUpcomingAccess);
     var canOpenSnapshot = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Reports/Snapshot");
+    var canOpenLicenseAssignments = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Reports/LicenseAssignments");
     var canOpenProjectList = isAuthenticated &&
         (await PageAccessService.UserHasAccessAsync(currentUserName, "/Projects/Index")
          || accessScope.IsProjectManager
@@ -103,7 +107,7 @@
     var canOpenLicenseProducts = isAuthenticated && await PageAccessService.UserHasAccessAsync(currentUserName, "/Settings/LicenseProducts");
 
     var canOpenRequests = canOpenUserChangeQueue || canOpenUpdateUser || canOpenAddAssignment || canOpenSupervisor || canOpenApprovals || canOpenUpcomingChanges || canOpenManagerLicenseReviews || canOpenLicenseReview;
-    var canOpenReports = canOpenSnapshot;
+    var canOpenReports = canOpenSnapshot || canOpenLicenseAssignments;
     var canOpenSettings = canOpenGroupRules || canOpenTranslations || canOpenDomains || canOpenEmailTemplates || canOpenPageAccessRules || canOpenAccessCardGroups || canOpenTemporaryAccessGroups || canOpenLicenseProducts;
 
     string ActiveClass(string pagePath)
@@ -179,13 +183,17 @@
                         @if (canOpenEmployees)
                         {
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/Employees/Duplicates"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/Employees/Duplicates", "/Employees/Maintenance"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                     @T("nav.employees")
                                 </a>
                                 <ul class="dropdown-menu">
                                     @if (canOpenDuplicates)
                                     {
                                         <li><a class="dropdown-item@(ActiveClass("/Employees/Duplicates"))" asp-area="" asp-page="/Employees/Duplicates">@T("nav.duplicates")</a></li>
+                                    }
+                                    @if (canOpenEmployeeMaintenance)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Employees/Maintenance"))" asp-area="" asp-page="/Employees/Maintenance">@T("nav.employeeMaintenance")</a></li>
                                     }
                                 </ul>
                             </li>
@@ -278,11 +286,18 @@
                         @if (canOpenReports)
                         {
                             <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/Reports/Snapshot"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <a class="nav-link dropdown-toggle@(DropdownActiveClass("/Reports/Snapshot", "/Reports/LicenseAssignments"))" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                     @T("nav.reports")
                                 </a>
                                 <ul class="dropdown-menu">
-                                    <li><a class="dropdown-item@(ActiveClass("/Reports/Snapshot"))" asp-area="" asp-page="/Reports/Snapshot">@T("nav.cfoReport")</a></li>
+                                    @if (canOpenSnapshot)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Reports/Snapshot"))" asp-area="" asp-page="/Reports/Snapshot">@T("nav.cfoReport")</a></li>
+                                    }
+                                    @if (canOpenLicenseAssignments)
+                                    {
+                                        <li><a class="dropdown-item@(ActiveClass("/Reports/LicenseAssignments"))" asp-area="" asp-page="/Reports/LicenseAssignments">@T("nav.licenseAssignments")</a></li>
+                                    }
                                 </ul>
                             </li>
                         }

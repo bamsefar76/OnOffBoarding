@@ -150,6 +150,63 @@ END;";
         }
     }
 
+    public async Task<IActionResult> OnPostRetryDeprovisioningAsync(long applicationId, long itemId)
+    {
+        NormalizeFilters();
+
+        await using var connection =
+            await _connections.OpenAsync(HttpContext.RequestAborted);
+        await using var transaction =
+            (SqlTransaction)await connection.BeginTransactionAsync(HttpContext.RequestAborted);
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = @"
+UPDATE dbo.LicenseApplicationItems
+SET DeprovisioningStatus=N'Pending',
+    DeprovisioningLockId=NULL,
+    DeprovisioningLockedAt=NULL,
+    DeprovisioningLastError=NULL
+WHERE LicenseApplicationItemId=@ItemId
+  AND LicenseApplicationId=@ApplicationId
+  AND FulfillmentType=N'AdGroup'
+  AND DeprovisioningStatus=N'Failed';
+
+IF @@ROWCOUNT = 1
+BEGIN
+    UPDATE dbo.LicenseApplications
+    SET Status = CASE
+        WHEN EXISTS
+        (
+            SELECT 1 FROM dbo.LicenseApplicationItems
+            WHERE LicenseApplicationId=@ApplicationId
+              AND DeprovisioningStatus=N'Failed'
+        ) THEN N'DeprovisioningFailed'
+        ELSE N'Completed'
+    END
+    WHERE LicenseApplicationId=@ApplicationId;
+END;";
+            command.Parameters.AddBigInt("@ApplicationId", applicationId);
+            command.Parameters.AddBigInt("@ItemId", itemId);
+
+            var affected = await command.ExecuteNonQueryAsync(HttpContext.RequestAborted);
+            await transaction.CommitAsync(HttpContext.RequestAborted);
+
+            StatusMessageKey = affected > 0
+                ? "licenseReview.message.deprovisioningRetried"
+                : "licenseReview.message.deprovisioningRetryUnavailable";
+            StatusMessageArgument = itemId.ToString();
+            return RedirectToPage(GetRedirectValues(applicationId));
+        }
+        catch
+        {
+            await transaction.RollbackAsync(HttpContext.RequestAborted);
+            throw;
+        }
+    }
+
     public async Task<IActionResult> OnPostCompleteAsync(long applicationId)
     {
         NormalizeFilters();
@@ -188,6 +245,28 @@ WHERE LicenseApplicationId = @ApplicationId
       FROM dbo.LicenseApplications
       WHERE LicenseApplicationId = @ApplicationId
         AND Status IN (N'Approved', N'PartiallyApproved')
+  );
+
+INSERT INTO dbo.LicenseAssignments
+(
+    LicenseApplicationItemId, LicenseApplicationId, LicenseProductId,
+    UserSamAccountName, UserDisplayName, UserEmail, ProjectNumber,
+    StartDate, EndDate, IsPermanent, FulfillmentType, AdGroupName, Status, ActivatedAt, ActivatedBy
+)
+SELECT
+    item.LicenseApplicationItemId, application.LicenseApplicationId, item.LicenseProductId,
+    application.RequestedForSamAccountName, application.RequestedForDisplayName, application.RequestedForEmail, application.ProjectNumber,
+    item.StartDate, item.EndDate, item.IsPermanent, item.FulfillmentType, item.AdGroupName, N'Active', SYSDATETIME(), @ChangedBy
+FROM dbo.LicenseApplicationItems AS item
+INNER JOIN dbo.LicenseApplications AS application
+    ON application.LicenseApplicationId=item.LicenseApplicationId
+WHERE item.LicenseApplicationId=@ApplicationId
+  AND item.FulfillmentType=N'Manual'
+  AND item.Status=N'Completed'
+  AND NOT EXISTS
+  (
+      SELECT 1 FROM dbo.LicenseAssignments AS existing
+      WHERE existing.LicenseApplicationItemId=item.LicenseApplicationItemId
   );
 
 UPDATE dbo.LicenseApplications
@@ -439,6 +518,7 @@ WHERE (@Status IS NULL OR application.Status = @Status)
       OR application.RequestedForEmail LIKE N'%' + @Search + N'%'
       OR application.ManagerDisplayName LIKE N'%' + @Search + N'%'
       OR application.BusinessReason LIKE N'%' + @Search + N'%'
+      OR application.ProjectNumber LIKE N'%' + @Search + N'%'
       OR EXISTS
       (
           SELECT 1
@@ -519,6 +599,7 @@ SELECT
     application.ManagerSamAccountName,
     application.ManagerDisplayName,
     application.BusinessReason,
+    application.ProjectNumber,
     application.Status,
     application.ManagerDecision,
     application.ManagerReason,
@@ -529,8 +610,13 @@ SELECT
     item.ItReason,
     item.FulfillmentType,
     item.AdGroupName,
+    item.StartDate,
+    item.EndDate,
+    item.IsPermanent,
     item.ProvisioningStatus,
-    item.ProvisioningLastError
+    item.ProvisioningLastError,
+    item.DeprovisioningStatus,
+    item.DeprovisioningLastError
 FROM dbo.LicenseApplications AS application
 INNER JOIN dbo.LicenseApplicationItems AS item
     ON item.LicenseApplicationId = application.LicenseApplicationId
@@ -555,22 +641,28 @@ ORDER BY product.Name;";
                 ManagerSam = Get(reader, 3),
                 ManagerName = Get(reader, 4),
                 BusinessReason = Get(reader, 5),
-                Status = Get(reader, 6),
-                ManagerDecision = Get(reader, 7),
-                ManagerReason = Get(reader, 8),
-                SubmittedAt = reader.GetDateTime(9)
+                ProjectNumber = Get(reader, 6),
+                Status = Get(reader, 7),
+                ManagerDecision = Get(reader, 8),
+                ManagerReason = Get(reader, 9),
+                SubmittedAt = reader.GetDateTime(10)
             };
 
             result.Items.Add(new ItemDetails
             {
-                Id = reader.GetInt64(10),
-                Name = Get(reader, 11),
-                Status = Get(reader, 12),
-                Reason = Get(reader, 13),
-                FulfillmentType = Get(reader, 14),
-                AdGroupName = Get(reader, 15),
-                ProvisioningStatus = Get(reader, 16),
-                ProvisioningLastError = Get(reader, 17)
+                Id = reader.GetInt64(11),
+                Name = Get(reader, 12),
+                Status = Get(reader, 13),
+                Reason = Get(reader, 14),
+                FulfillmentType = Get(reader, 15),
+                AdGroupName = Get(reader, 16),
+                StartDate = reader.GetDateTime(17),
+                EndDate = reader.IsDBNull(18) ? null : reader.GetDateTime(18),
+                IsPermanent = reader.GetBoolean(19),
+                ProvisioningStatus = Get(reader, 20),
+                ProvisioningLastError = Get(reader, 21),
+                DeprovisioningStatus = Get(reader, 22),
+                DeprovisioningLastError = Get(reader, 23)
             });
         }
 
@@ -613,6 +705,7 @@ ORDER BY product.Name;";
         public string ManagerSam { get; init; } = "";
         public string ManagerName { get; init; } = "";
         public string BusinessReason { get; init; } = "";
+        public string ProjectNumber { get; init; } = "";
         public string Status { get; init; } = "";
         public string ManagerDecision { get; init; } = "";
         public string ManagerReason { get; init; } = "";
@@ -632,7 +725,12 @@ ORDER BY product.Name;";
         public string Reason { get; init; } = "";
         public string FulfillmentType { get; init; } = "Manual";
         public string AdGroupName { get; init; } = "";
+        public DateTime StartDate { get; init; }
+        public DateTime? EndDate { get; init; }
+        public bool IsPermanent { get; init; }
         public string ProvisioningStatus { get; init; } = "";
         public string ProvisioningLastError { get; init; } = "";
+        public string DeprovisioningStatus { get; init; } = "";
+        public string DeprovisioningLastError { get; init; } = "";
     }
 }

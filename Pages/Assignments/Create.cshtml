@@ -1,4 +1,4 @@
-﻿@page
+@page
 @model UserChangeQueueWeb.Pages.Assignments.CreateModel
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
@@ -38,6 +38,12 @@
         ["assignments.licenses"] = "Licenses",
         ["assignments.licensesOptional"] = "Optional",
         ["assignments.licensesHelp"] = "Select licenses that should be requested as part of this assignment. The license workflow starts after the user change has been completed.",
+        ["assignments.licensePeriodNotice"] = "Selected licenses use the assignment start and end dates. Only one license period can be used in this request; request licenses separately if they need another period.",
+        ["assignments.licenseCostNotice"] = "Any additional license cost will be added to the project budget.",
+        ["licenseCapacity.payAsYouGo"] = "Pay as you go",
+        ["licenseCapacity.inUse"] = "{0} in use",
+        ["licenseCapacity.inUseOf"] = "{0} of {1} in use",
+        ["licenseCapacity.checkNotice"] = "License capacity is checked against the assignment period when you submit.",
         ["assignments.licenseBusinessReason"] = "Business reason",
         ["assignments.licenseBusinessReasonHelp"] = "Required when one or more licenses are selected.",
         ["assignments.licenseWorkflowManual"] = "Manual",
@@ -49,6 +55,8 @@
         ["assignments.licenseValidationManagerRequired"] = "Select a manager before requesting licenses.",
         ["assignments.licenseValidationReasonRequired"] = "Enter a business reason for the selected licenses.",
         ["assignments.licenseValidationReasonTooLong"] = "The license business reason cannot be longer than 2000 characters.",
+        ["assignments.licenseValidationProjectRequired"] = "Select a project with a project number before requesting licenses.",
+        ["assignments.licenseValidationCapacityExceeded"] = "License '{0}' has no remaining capacity for the assignment period.",
         ["field.givenName"] = "Given name",
         ["field.surname"] = "Surname",
         ["field.privateEmail"] = "Private email",
@@ -350,6 +358,9 @@
         <div id="assignmentLicenses" class="collapse @(licenseSectionOpen ? "show" : "")">
             <div class="card-body p-2">
                 <p class="text-muted small mb-2">@T("assignments.licensesHelp")</p>
+                <div class="alert alert-info py-2 small mb-2" role="note">@T("assignments.licensePeriodNotice")</div>
+                <div class="alert alert-warning py-2 small mb-2" role="note">@T("assignments.licenseCostNotice")</div>
+                <div class="text-muted small mb-3">@T("licenseCapacity.checkNotice")</div>
 
                 @if (Model.LicenseProducts.Any())
                 {
@@ -376,6 +387,22 @@
                                             {
                                                 <span class="d-block text-muted small">@license.LicenseLevel</span>
                                             }
+                                            <span class="d-block small mt-1">
+                                                @if (!license.LicenseCount.HasValue || license.LicenseCount.Value <= 0)
+                                                {
+                                                    <span class="badge app-status-badge app-status-badge-info">@T("licenseCapacity.payAsYouGo")</span>
+                                                    <span class="text-muted ms-1">@F("licenseCapacity.inUse", license.CurrentInUse)</span>
+                                                }
+                                                else
+                                                {
+                                                    var usageClass = license.CurrentInUse >= license.LicenseCount.Value
+                                                        ? "app-status-badge-danger"
+                                                        : "app-status-badge-success";
+                                                    <span class="badge app-status-badge @usageClass">
+                                                        @F("licenseCapacity.inUseOf", license.CurrentInUse, license.LicenseCount.Value)
+                                                    </span>
+                                                }
+                                            </span>
                                         </label>
                                     </div>
                                 </div>

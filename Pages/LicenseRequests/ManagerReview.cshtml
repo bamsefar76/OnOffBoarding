@@ -13,6 +13,9 @@
         ["managerLicenseReview.requestedBy"] = "Requested by",
         ["managerLicenseReview.licenses"] = "Licenses",
         ["managerLicenseReview.businessReason"] = "Business reason",
+        ["managerLicenseReview.projectNumber"] = "Project number",
+        ["managerLicenseReview.validity"] = "Validity",
+        ["managerLicenseReview.permanent"] = "Permanent",
         ["managerLicenseReview.submitted"] = "Submitted",
         ["managerLicenseReview.decision"] = "Decision",
         ["managerLicenseReview.reason"] = "Reason",
@@ -36,6 +39,7 @@
         ["licenseStatus.itRejected"] = "Rejected by IT",
         ["licenseStatus.provisioning"] = "Provisioning",
         ["licenseStatus.provisioningFailed"] = "Provisioning failed",
+        ["licenseStatus.deprovisioningFailed"] = "Removal failed",
         ["licenseDecision.approved"] = "Approved",
         ["licenseDecision.rejected"] = "Rejected"
     };
@@ -58,6 +62,7 @@
         "ITRejected" => T("licenseStatus.itRejected"),
         "Provisioning" => T("licenseStatus.provisioning"),
         "ProvisioningFailed" => T("licenseStatus.provisioningFailed"),
+        "DeprovisioningFailed" => T("licenseStatus.deprovisioningFailed"),
         _ => status
     };
 
@@ -75,7 +80,7 @@
         "Approved" or "Completed" => "app-status-badge app-status-badge-success",
         "PartiallyApproved" => "app-status-badge app-status-badge-info",
         "Provisioning" => "app-status-badge app-status-badge-info",
-        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "app-status-badge app-status-badge-danger",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" or "DeprovisioningFailed" => "app-status-badge app-status-badge-danger",
         _ => "app-status-badge app-status-badge-secondary"
     };
 
@@ -86,7 +91,7 @@
         "Approved" or "Completed" => "manager-review-approved",
         "PartiallyApproved" => "manager-review-partial",
         "Provisioning" => "manager-review-partial",
-        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "manager-review-rejected",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" or "DeprovisioningFailed" => "manager-review-rejected",
         _ => "manager-review-other"
     };
 
@@ -151,6 +156,10 @@
                     <div class="manager-review-label">@T("managerLicenseReview.businessReason")</div>
                     <div class="manager-review-text">@application.BusinessReason</div>
                 </div>
+                <div class="col-md-3">
+                    <div class="manager-review-label">@T("managerLicenseReview.projectNumber")</div>
+                    <div>@(string.IsNullOrWhiteSpace(application.ProjectNumber) ? T("common.notProvided") : application.ProjectNumber)</div>
+                </div>
                 <div class="col-lg-6">
                     <div class="manager-review-label">@T("managerLicenseReview.licenses")</div>
                     <ul class="mb-0 ps-3">
@@ -158,6 +167,7 @@
                         {
                             <li class="mb-1">
                                 @item.Name
+                                <span class="small text-body-secondary"> · @item.StartDate.ToString("dd.MM.yyyy") – @(item.IsPermanent ? T("managerLicenseReview.permanent") : item.EndDate?.ToString("dd.MM.yyyy"))</span>
                                 <span class="badge app-status-badge @(item.FulfillmentType == "AdGroup" ? "app-status-badge-info" : "app-status-badge-secondary") ms-1">
                                     @(item.FulfillmentType == "AdGroup"
                                         ? T("managerLicenseReview.workflowAdGroup")

@@ -1,0 +1,139 @@
+@page
+@model UserChangeQueueWeb.Pages.Reports.LicenseAssignmentsModel
+@using UserChangeQueueWeb.Services
+@inject UiTextService UiTextService
+@{
+    var textFallbacks = new Dictionary<string, string>
+    {
+        ["common.all"] = "All",
+        ["common.filter"] = "Filter",
+        ["common.clear"] = "Clear",
+        ["common.previous"] = "Previous",
+        ["common.next"] = "Next",
+        ["common.notProvided"] = "Not provided",
+        ["licenseAssignments.title"] = "License assignments",
+        ["licenseAssignments.help"] = "Permanent per-user log of assigned licenses, validity periods and project numbers.",
+        ["licenseAssignments.search"] = "Search",
+        ["licenseAssignments.searchPlaceholder"] = "User, email, license or project number",
+        ["licenseAssignments.status"] = "Status",
+        ["licenseAssignments.user"] = "User",
+        ["licenseAssignments.license"] = "License",
+        ["licenseAssignments.projectNumber"] = "Project number",
+        ["licenseAssignments.startDate"] = "Start date",
+        ["licenseAssignments.endDate"] = "End date",
+        ["licenseAssignments.permanent"] = "Permanent",
+        ["licenseAssignments.assignedAt"] = "Assigned at",
+        ["licenseAssignments.application"] = "Application",
+        ["licenseAssignments.noRows"] = "No license assignments matched the current filters.",
+        ["licenseAssignments.resultCount"] = "Showing {0}-{1} of {2}",
+        ["licenseAssignments.page"] = "Page {0} of {1}",
+        ["licenseAssignmentStatus.scheduled"] = "Scheduled",
+        ["licenseAssignmentStatus.active"] = "Active",
+        ["licenseAssignmentStatus.ended"] = "Ended"
+    };
+    var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    ViewData["Title"] = uiText.T("licenseAssignments.title", textFallbacks["licenseAssignments.title"]);
+    string T(string key) => uiText.T(key, textFallbacks[key]);
+    string F(string key, params object[] args) => string.Format(uiText.T(key, textFallbacks[key]), args);
+    string StatusText(string status) => status switch
+    {
+        "Scheduled" => T("licenseAssignmentStatus.scheduled"),
+        "Active" => T("licenseAssignmentStatus.active"),
+        "Ended" => T("licenseAssignmentStatus.ended"),
+        _ => status
+    };
+    var first = Model.TotalCount == 0 ? 0 : ((Model.PageNumber - 1) * Model.PageSizeValue) + 1;
+    var last = Math.Min(Model.TotalCount, Model.PageNumber * Model.PageSizeValue);
+}
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <h1 class="h2 mb-1">@T("licenseAssignments.title")</h1>
+        <p class="text-body-secondary mb-0">@T("licenseAssignments.help")</p>
+    </div>
+</div>
+
+<form method="get" class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-md-7">
+                <label asp-for="Search" class="form-label">@T("licenseAssignments.search")</label>
+                <input asp-for="Search" class="form-control" placeholder="@T("licenseAssignments.searchPlaceholder")" />
+            </div>
+            <div class="col-md-3">
+                <label asp-for="StatusFilter" class="form-label">@T("licenseAssignments.status")</label>
+                <select asp-for="StatusFilter" class="form-select">
+                    <option value="">@T("common.all")</option>
+                    <option value="Scheduled">@T("licenseAssignmentStatus.scheduled")</option>
+                    <option value="Active">@T("licenseAssignmentStatus.active")</option>
+                    <option value="Ended">@T("licenseAssignmentStatus.ended")</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button class="btn btn-secondary" type="submit">@T("common.filter")</button>
+                <a asp-page="/Reports/LicenseAssignments" class="btn btn-outline-secondary">@T("common.clear")</a>
+            </div>
+        </div>
+    </div>
+</form>
+
+@if (Model.Assignments.Count == 0)
+{
+    <div class="alert alert-secondary">@T("licenseAssignments.noRows")</div>
+}
+else
+{
+    <div class="d-flex justify-content-between small text-body-secondary mb-2">
+        <span>@F("licenseAssignments.resultCount", first, last, Model.TotalCount)</span>
+        <span>@F("licenseAssignments.page", Model.PageNumber, Model.TotalPages)</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle">
+            <thead>
+                <tr>
+                    <th>@T("licenseAssignments.user")</th>
+                    <th>@T("licenseAssignments.license")</th>
+                    <th>@T("licenseAssignments.projectNumber")</th>
+                    <th>@T("licenseAssignments.startDate")</th>
+                    <th>@T("licenseAssignments.endDate")</th>
+                    <th>@T("licenseAssignments.status")</th>
+                    <th>@T("licenseAssignments.assignedAt")</th>
+                    <th>@T("licenseAssignments.application")</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var row in Model.Assignments)
+            {
+                <tr>
+                    <td>
+                        <div class="fw-semibold">@(string.IsNullOrWhiteSpace(row.DisplayName) ? row.SamAccountName : row.DisplayName)</div>
+                        <div class="small text-body-secondary">@row.SamAccountName</div>
+                    </td>
+                    <td>@row.LicenseName</td>
+                    <td>@(string.IsNullOrWhiteSpace(row.ProjectNumber) ? T("common.notProvided") : row.ProjectNumber)</td>
+                    <td>@row.StartDate.ToString("dd.MM.yyyy")</td>
+                    <td>@(row.IsPermanent ? T("licenseAssignments.permanent") : row.EndDate?.ToString("dd.MM.yyyy"))</td>
+                    <td>@StatusText(row.Status)</td>
+                    <td>@(row.ActivatedAt?.ToString("dd.MM.yyyy HH:mm") ?? "")</td>
+                    <td><a asp-page="/LicenseRequests/ITReview" asp-route-OpenId="@row.ApplicationId">#@row.ApplicationId</a></td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+
+    <nav class="d-flex justify-content-between align-items-center mt-3">
+        <div>
+            @if (Model.PageNumber > 1)
+            {
+                <a class="btn btn-outline-secondary btn-sm" asp-route-Search="@Model.Search" asp-route-StatusFilter="@Model.StatusFilter" asp-route-PageNumber="@(Model.PageNumber - 1)">@T("common.previous")</a>
+            }
+        </div>
+        <div>
+            @if (Model.PageNumber < Model.TotalPages)
+            {
+                <a class="btn btn-outline-secondary btn-sm" asp-route-Search="@Model.Search" asp-route-StatusFilter="@Model.StatusFilter" asp-route-PageNumber="@(Model.PageNumber + 1)">@T("common.next")</a>
+            }
+        </div>
+    </nav>
+}

@@ -30,6 +30,12 @@
         ["licenseProducts.fulfillmentHelp"] = "Manual licenses require IT review. AD group licenses are provisioned automatically after manager approval.",
         ["licenseProducts.adGroupName"] = "AD group",
         ["licenseProducts.adGroupHelp"] = "The user is added to this AD group after manager approval.",
+        ["licenseProducts.licenseCount"] = "License count",
+        ["licenseProducts.licenseCountHelp"] = "Leave blank or enter 0 for pay-as-you-go (unlimited).",
+        ["licenseProducts.usage"] = "Usage",
+        ["licenseCapacity.payAsYouGo"] = "Pay as you go",
+        ["licenseCapacity.inUse"] = "{0} in use",
+        ["licenseCapacity.inUseOf"] = "{0} of {1} in use",
         ["licenseProducts.available"] = "Available for request",
         ["licenseProducts.familyHelp"] = "Licenses with the same non-empty product family cannot be requested together.",
         ["licenseProducts.editLicense"] = "Edit license",
@@ -48,7 +54,8 @@
         ["licenseProducts.validation.familyTooLong"] = "Product family cannot be longer than 100 characters.",
         ["licenseProducts.validation.fulfillmentInvalid"] = "Select a valid fulfillment workflow.",
         ["licenseProducts.validation.adGroupRequired"] = "AD group is required for automatic fulfillment.",
-        ["licenseProducts.validation.adGroupTooLong"] = "AD group cannot be longer than 300 characters."
+        ["licenseProducts.validation.adGroupTooLong"] = "AD group cannot be longer than 300 characters.",
+        ["licenseProducts.validation.licenseCountNegative"] = "License count cannot be negative."
     };
 
     var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
@@ -78,6 +85,7 @@
         "licenseProducts.validation.fulfillmentInvalid" => T("licenseProducts.validation.fulfillmentInvalid"),
         "licenseProducts.validation.adGroupRequired" => T("licenseProducts.validation.adGroupRequired"),
         "licenseProducts.validation.adGroupTooLong" => T("licenseProducts.validation.adGroupTooLong"),
+        "licenseProducts.validation.licenseCountNegative" => T("licenseProducts.validation.licenseCountNegative"),
         _ => ""
     };
 }
@@ -135,6 +143,7 @@
                             <th>@T("licenseProducts.productFamily")</th>
                             <th>@T("licenseProducts.level")</th>
                             <th>@T("licenseProducts.fulfillmentType")</th>
+                            <th>@T("licenseProducts.usage")</th>
                             <th>@T("common.active")</th>
                             <th>@T("licenseProducts.sortOrder")</th>
                             <th class="text-end"></th>
@@ -144,7 +153,7 @@
                     @if (Model.Products.Count == 0)
                     {
                         <tr>
-                            <td colspan="7" class="text-body-secondary py-4 text-center">
+                            <td colspan="8" class="text-body-secondary py-4 text-center">
                                 @T("licenseProducts.noProducts")
                             </td>
                         </tr>
@@ -176,6 +185,22 @@
                                     @if (product.FulfillmentType == "AdGroup" && !string.IsNullOrWhiteSpace(product.AdGroupName))
                                     {
                                         <div class="small text-body-secondary text-break">@product.AdGroupName</div>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!product.LicenseCount.HasValue || product.LicenseCount.Value <= 0)
+                                    {
+                                        <div class="fw-semibold">@T("licenseCapacity.payAsYouGo")</div>
+                                        <div class="small text-body-secondary">@F("licenseCapacity.inUse", product.CurrentInUse)</div>
+                                    }
+                                    else
+                                    {
+                                        var usageClass = product.CurrentInUse >= product.LicenseCount.Value
+                                            ? "app-status-badge-danger"
+                                            : "app-status-badge-success";
+                                        <span class="badge app-status-badge @usageClass">
+                                            @F("licenseCapacity.inUseOf", product.CurrentInUse, product.LicenseCount.Value)
+                                        </span>
                                     }
                                 </td>
                                 <td>
@@ -245,11 +270,16 @@
                     </div>
 
                     <div class="row g-3">
-                        <div class="col-sm-6">
+                        <div class="col-sm-4">
                             <label asp-for="Edit.LicenseLevel" class="form-label">@T("licenseProducts.level")</label>
                             <input asp-for="Edit.LicenseLevel" class="form-control" type="number" />
                         </div>
-                        <div class="col-sm-6">
+                        <div class="col-sm-4">
+                            <label asp-for="Edit.LicenseCount" class="form-label">@T("licenseProducts.licenseCount")</label>
+                            <input asp-for="Edit.LicenseCount" class="form-control" type="number" min="0" />
+                            <div class="form-text">@T("licenseProducts.licenseCountHelp")</div>
+                        </div>
+                        <div class="col-sm-4">
                             <label asp-for="Edit.SortOrder" class="form-label">@T("licenseProducts.sortOrder")</label>
                             <input asp-for="Edit.SortOrder" class="form-control" type="number" />
                         </div>

@@ -123,6 +123,53 @@ small.text-muted {
   border: 1px solid #b8c0c8;
 }
 
+/*
+  Bootstrap 5.3 introduced the text-bg-* helpers. This application still ships
+  Bootstrap 5.1, where using those class names leaves .badge with its default
+  white text but no background. That is the source of the white-on-white badges
+  on the dashboard and several request/profile pages. Backport the helpers here
+  so existing markup remains readable in both themes.
+*/
+.text-bg-primary {
+  color: #fff !important;
+  background-color: rgba(var(--bs-primary-rgb), 1) !important;
+}
+
+.text-bg-secondary {
+  color: #fff !important;
+  background-color: rgba(var(--bs-secondary-rgb), 1) !important;
+}
+
+.text-bg-success {
+  color: #fff !important;
+  background-color: rgba(var(--bs-success-rgb), 1) !important;
+}
+
+.text-bg-danger {
+  color: #fff !important;
+  background-color: rgba(var(--bs-danger-rgb), 1) !important;
+}
+
+.text-bg-warning {
+  color: #212529 !important;
+  background-color: rgba(var(--bs-warning-rgb), 1) !important;
+}
+
+.text-bg-info {
+  color: #212529 !important;
+  background-color: rgba(var(--bs-info-rgb), 1) !important;
+}
+
+.text-bg-dark {
+  color: #fff !important;
+  background-color: rgba(var(--bs-dark-rgb), 1) !important;
+}
+
+/* Bootstrap 5.3 compatibility for the dashboard error statistic border. */
+.border-danger-subtle {
+  border-color: rgba(var(--bs-danger-rgb), .45) !important;
+}
+
 /* Cards and panel-like components */
 .card,
 .modal-content,

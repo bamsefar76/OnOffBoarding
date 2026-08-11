@@ -22,6 +22,9 @@
         ["licenseReview.requester"] = "Requester",
         ["licenseReview.manager"] = "Manager",
         ["licenseReview.businessReason"] = "Business reason",
+        ["licenseReview.projectNumber"] = "Project number",
+        ["licenseReview.validity"] = "Validity",
+        ["licenseReview.permanent"] = "Permanent",
         ["licenseReview.managerReason"] = "Manager reason",
         ["licenseReview.submitted"] = "Submitted",
         ["licenseReview.licenses"] = "Licenses",
@@ -33,6 +36,8 @@
         ["licenseReview.adGroup"] = "AD group",
         ["licenseReview.provisioningError"] = "Provisioning error",
         ["licenseReview.retryProvisioning"] = "Retry AD provisioning",
+        ["licenseReview.deprovisioningError"] = "Removal error",
+        ["licenseReview.retryDeprovisioning"] = "Retry AD group removal",
         ["licenseReview.approve"] = "Approve",
         ["licenseReview.reject"] = "Reject",
         ["licenseReview.rejectionReason"] = "Rejection reason",
@@ -54,6 +59,8 @@
         ["licenseReview.message.itemRejected"] = "License item {0} was rejected.",
         ["licenseReview.message.provisioningRetried"] = "AD provisioning was queued again for license item {0}.",
         ["licenseReview.message.provisioningRetryUnavailable"] = "AD provisioning could not be retried for license item {0}.",
+        ["licenseReview.message.deprovisioningRetried"] = "AD group removal was queued again for license item {0}.",
+        ["licenseReview.message.deprovisioningRetryUnavailable"] = "AD group removal could not be retried for license item {0}.",
         ["licenseStatus.awaitingManager"] = "Awaiting manager",
         ["licenseStatus.awaitingIT"] = "Awaiting IT",
         ["licenseStatus.approved"] = "Approved",
@@ -63,6 +70,7 @@
         ["licenseStatus.itRejected"] = "Rejected by IT",
         ["licenseStatus.provisioning"] = "Provisioning",
         ["licenseStatus.provisioningFailed"] = "Provisioning failed",
+        ["licenseStatus.deprovisioningFailed"] = "Removal failed",
         ["licenseItemStatus.pending"] = "Pending",
         ["licenseItemStatus.approved"] = "Approved",
         ["licenseItemStatus.rejected"] = "Rejected",
@@ -93,6 +101,7 @@
         "ITRejected" => T("licenseStatus.itRejected"),
         "Provisioning" => T("licenseStatus.provisioning"),
         "ProvisioningFailed" => T("licenseStatus.provisioningFailed"),
+        "DeprovisioningFailed" => T("licenseStatus.deprovisioningFailed"),
         "Pending" => T("licenseItemStatus.pending"),
         "Rejected" => T("licenseItemStatus.rejected"),
         _ => status
@@ -122,7 +131,7 @@
         "PartiallyApproved" => "app-status-badge app-status-badge-info",
         "Completed" => "app-status-badge app-status-badge-success",
         "Provisioning" => "app-status-badge app-status-badge-info",
-        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "app-status-badge app-status-badge-danger",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" or "DeprovisioningFailed" => "app-status-badge app-status-badge-danger",
         _ => "app-status-badge app-status-badge-secondary"
     };
 
@@ -133,7 +142,7 @@
         "Approved" or "Completed" => "license-status-approved",
         "PartiallyApproved" => "license-status-partial",
         "Provisioning" => "license-status-partial",
-        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" => "license-status-rejected",
+        "ManagerRejected" or "ITRejected" or "ProvisioningFailed" or "DeprovisioningFailed" => "license-status-rejected",
         _ => "license-status-other"
     };
 
@@ -146,6 +155,8 @@
         "licenseReview.message.itemRejected" => F("licenseReview.message.itemRejected", Model.StatusMessageArgument ?? ""),
         "licenseReview.message.provisioningRetried" => F("licenseReview.message.provisioningRetried", Model.StatusMessageArgument ?? ""),
         "licenseReview.message.provisioningRetryUnavailable" => F("licenseReview.message.provisioningRetryUnavailable", Model.StatusMessageArgument ?? ""),
+        "licenseReview.message.deprovisioningRetried" => F("licenseReview.message.deprovisioningRetried", Model.StatusMessageArgument ?? ""),
+        "licenseReview.message.deprovisioningRetryUnavailable" => F("licenseReview.message.deprovisioningRetryUnavailable", Model.StatusMessageArgument ?? ""),
         _ => ""
     };
 
@@ -192,6 +203,7 @@
                     <option value="PartiallyApproved">@T("licenseStatus.partiallyApproved")</option>
                     <option value="Provisioning">@T("licenseStatus.provisioning")</option>
                     <option value="ProvisioningFailed">@T("licenseStatus.provisioningFailed")</option>
+                    <option value="DeprovisioningFailed">@T("licenseStatus.deprovisioningFailed")</option>
                     <option value="Completed">@T("licenseStatus.completed")</option>
                     <option value="ManagerRejected">@T("licenseStatus.managerRejected")</option>
                     <option value="ITRejected">@T("licenseStatus.itRejected")</option>
@@ -289,6 +301,10 @@ else
                                 <div>@application.SubmittedAt.ToString("dd.MM.yyyy HH:mm")</div>
                             </div>
                             <div class="col-md-6 col-xl-3">
+                                <div class="detail-label">@T("licenseReview.projectNumber")</div>
+                                <div>@(string.IsNullOrWhiteSpace(application.ProjectNumber) ? T("common.notProvided") : application.ProjectNumber)</div>
+                            </div>
+                            <div class="col-md-6 col-xl-3">
                                 <div class="detail-label">@T("common.status")</div>
                                 <span class="badge @badgeClass">@StatusText(application.Status)</span>
                             </div>
@@ -335,6 +351,7 @@ else
                                     <tr>
                                         <td>
                                             <div class="fw-semibold">@item.Name</div>
+                                            <div class="small text-body-secondary">@T("licenseReview.validity"): @item.StartDate.ToString("dd.MM.yyyy") – @(item.IsPermanent ? T("licenseReview.permanent") : item.EndDate?.ToString("dd.MM.yyyy"))</div>
                                             <span class="badge app-status-badge @(isAdGroup ? "app-status-badge-info" : "app-status-badge-secondary") mt-1">
                                                 @(isAdGroup ? T("licenseReview.workflowAdGroup") : T("licenseReview.workflowManual"))
                                             </span>
@@ -345,7 +362,11 @@ else
                                         </td>
                                         <td>@displayedStatus</td>
                                         <td>
-                                            @if (isAdGroup && !string.IsNullOrWhiteSpace(item.ProvisioningLastError))
+                                            @if (isAdGroup && !string.IsNullOrWhiteSpace(item.DeprovisioningLastError))
+                                            {
+                                                <div class="text-danger small"><strong>@T("licenseReview.deprovisioningError"):</strong> @item.DeprovisioningLastError</div>
+                                            }
+                                            else if (isAdGroup && !string.IsNullOrWhiteSpace(item.ProvisioningLastError))
                                             {
                                                 <div class="text-danger small"><strong>@T("licenseReview.provisioningError"):</strong> @item.ProvisioningLastError</div>
                                             }
@@ -355,7 +376,21 @@ else
                                             }
                                         </td>
                                         <td class="text-end">
-                                            @if (isAdGroup && item.ProvisioningStatus == "Failed")
+                                            @if (isAdGroup && item.DeprovisioningStatus == "Failed")
+                                            {
+                                                <form method="post" asp-page-handler="RetryDeprovisioning" class="d-inline">
+                                                    <input type="hidden" name="applicationId" value="@application.Id" />
+                                                    <input type="hidden" name="itemId" value="@item.Id" />
+                                                    <input type="hidden" asp-for="Search" />
+                                                    <input type="hidden" asp-for="StatusFilter" />
+                                                    <input type="hidden" asp-for="RequesterFilter" />
+                                                    <input type="hidden" asp-for="LicenseFilter" />
+                                                    <input type="hidden" name="DateFilter" value="@dateFilterValue" />
+                                                    <input type="hidden" asp-for="PageNumber" />
+                                                    <button class="btn btn-sm btn-outline-danger" type="submit">@T("licenseReview.retryDeprovisioning")</button>
+                                                </form>
+                                            }
+                                            else if (isAdGroup && item.ProvisioningStatus == "Failed")
                                             {
                                                 <form method="post" asp-page-handler="RetryProvisioning" class="d-inline">
                                                     <input type="hidden" name="applicationId" value="@application.Id" />

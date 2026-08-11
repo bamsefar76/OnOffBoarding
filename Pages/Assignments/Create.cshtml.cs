@@ -22,19 +22,22 @@ public sealed class CreateModel : PageModel
     private readonly AccessCardGroupService _accessCardGroupService;
     private readonly OfficeLicenseRuleService _officeLicenseRuleService;
     private readonly ADGroupRuleService _groupRuleService;
+    private readonly LicenseCapacityService _licenseCapacityService;
 
     public CreateModel(
         SqlConnectionFactory connectionFactory,
         PersonMatchingService personMatchingService,
         AccessCardGroupService accessCardGroupService,
         OfficeLicenseRuleService officeLicenseRuleService,
-        ADGroupRuleService groupRuleService)
+        ADGroupRuleService groupRuleService,
+        LicenseCapacityService licenseCapacityService)
     {
         _connectionFactory = connectionFactory;
         _personMatchingService = personMatchingService;
         _accessCardGroupService = accessCardGroupService;
         _officeLicenseRuleService = officeLicenseRuleService;
         _groupRuleService = groupRuleService;
+        _licenseCapacityService = licenseCapacityService;
     }
 
     [BindProperty] public long? SelectedPersonId { get; set; }
@@ -327,6 +330,12 @@ ORDER BY {column};";
         if (ProjectId.HasValue && project is null)
             ModelState.AddModelError(nameof(ProjectId), "Select a project belonging to the selected label.");
 
+        if (SelectedLicenseIds.Count > 0 && (project is null || string.IsNullOrWhiteSpace(project.ProjectNumber)))
+        {
+            LicenseValidationMessageKey = "assignments.licenseValidationProjectRequired";
+            licenseValidationFailed = true;
+        }
+
         if (!string.IsNullOrWhiteSpace(ManagerSamAccountName)
             && !Managers.Any(x => string.Equals(x.SamAccountName, ManagerSamAccountName, StringComparison.OrdinalIgnoreCase)))
             ModelState.AddModelError(nameof(ManagerSamAccountName), "Select a manager belonging to the selected label and allowed to be a manager.");
@@ -341,6 +350,25 @@ ORDER BY {column};";
         await using var tx = (SqlTransaction)await cn.BeginTransactionAsync(HttpContext.RequestAborted);
         try
         {
+            if (selectedLicenses.Count > 0)
+            {
+                var capacityViolations = await _licenseCapacityService.CheckCapacityAsync(
+                    cn,
+                    tx,
+                    selectedLicenses.Select(license => license.Id).ToArray(),
+                    startDate!.Value,
+                    endDate,
+                    HttpContext.RequestAborted);
+
+                if (capacityViolations.Count > 0)
+                {
+                    await tx.RollbackAsync(HttpContext.RequestAborted);
+                    LicenseValidationMessageKey = "assignments.licenseValidationCapacityExceeded";
+                    LicenseValidationMessageArgument = capacityViolations[0].LicenseName;
+                    return Page();
+                }
+            }
+
             var employeeId = await ResolveEmployeeAsync(cn, tx);
             var employee = await ReadEmployeeAsync(cn, employeeId, tx)
                 ?? throw new InvalidOperationException("The employee could not be loaded.");
@@ -473,6 +501,10 @@ INSERT INTO dbo.AssignmentLicenseSelections
     BusinessReason,
     FulfillmentType,
     AdGroupName,
+    StartDate,
+    EndDate,
+    IsPermanent,
+    ProjectNumber,
     CreatedBy
 )
 VALUES
@@ -482,6 +514,10 @@ VALUES
     @BusinessReason,
     @FulfillmentType,
     @AdGroupName,
+    @StartDate,
+    @EndDate,
+    @IsPermanent,
+    @ProjectNumber,
     @CreatedBy
 );";
                     licenseCommand.Parameters.AddBigInt("@RequestId", requestId);
@@ -489,6 +525,10 @@ VALUES
                     licenseCommand.Parameters.AddRequiredNVarChar("@BusinessReason", LicenseBusinessReason!, 2000);
                     licenseCommand.Parameters.AddRequiredNVarChar("@FulfillmentType", license.FulfillmentType, 20);
                     licenseCommand.Parameters.AddNVarChar("@AdGroupName", license.AdGroupName, 300);
+                    licenseCommand.Parameters.AddNullableDate("@StartDate", startDate);
+                    licenseCommand.Parameters.AddNullableDate("@EndDate", endDate);
+                    licenseCommand.Parameters.AddBit("@IsPermanent", !endDate.HasValue);
+                    licenseCommand.Parameters.AddNVarChar("@ProjectNumber", project?.ProjectNumber, 100);
                     licenseCommand.Parameters.AddRequiredNVarChar("@CreatedBy", changedBy, 300);
                     await licenseCommand.ExecuteNonQueryAsync(HttpContext.RequestAborted);
                 }
@@ -574,7 +614,16 @@ SELECT
     ISNULL(ProductFamily, N''),
     ISNULL(CONVERT(nvarchar(20), LicenseLevel), N''),
     ISNULL(FulfillmentType, N'Manual'),
-    ISNULL(AdGroupName, N'')
+    ISNULL(AdGroupName, N''),
+    LicenseCount,
+    (
+        SELECT COUNT(*)
+        FROM dbo.LicenseAssignments AS assignment
+        WHERE assignment.LicenseProductId = dbo.LicenseProducts.LicenseProductId
+          AND assignment.Status = N'Active'
+          AND assignment.StartDate <= CAST(SYSDATETIME() AS date)
+          AND (assignment.IsPermanent = 1 OR assignment.EndDate IS NULL OR assignment.EndDate >= CAST(SYSDATETIME() AS date))
+    ) AS CurrentInUse
 FROM dbo.LicenseProducts
 WHERE Active = 1
 ORDER BY SortOrder, COALESCE(NULLIF(ProductFamily, N''), Name), LicenseLevel, Name;";
@@ -615,7 +664,9 @@ ORDER BY SortOrder, COALESCE(NULLIF(ProductFamily, N''), Name), LicenseLevel, Na
                 reader.GetString(3),
                 reader.GetString(4),
                 reader.GetString(5),
-                reader.GetString(6)));
+                reader.GetString(6),
+                reader.IsDBNull(7) ? null : reader.GetInt32(7),
+                reader.GetInt32(8)));
 
         await reader.DisposeAsync();
         TitleOfficeLicenseRules = await _officeLicenseRuleService.LoadActiveTitleRulesAsync(cn);
@@ -858,7 +909,9 @@ while (await r.ReadAsync())
         string ProductFamily,
         string LicenseLevel,
         string FulfillmentType,
-        string AdGroupName);
+        string AdGroupName,
+        int? LicenseCount,
+        int CurrentInUse);
     private sealed record EmployeeDetails(string GivenName, string Surname, string? PrivateEmail, string? MobilePhone, string? UserPrincipalName, Guid? ObjectGuid, string? SamAccountName)
     {
         public string DisplayName => $"{GivenName} {Surname}".Trim();
