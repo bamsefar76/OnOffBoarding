@@ -34,9 +34,14 @@
         ["employeeMaintenance.lastAssignment"] = "Last assignment",
         ["employeeMaintenance.reviewed"] = "Reviewed",
         ["employeeMaintenance.history"] = "History",
+        ["employeeMaintenance.assignmentReferences"] = "Assignments",
+        ["employeeMaintenance.requestReferences"] = "Requests",
+        ["employeeMaintenance.referenceNone"] = "None",
+        ["employeeMaintenance.quickDeleteReason"] = "Deleted directly from Employee maintenance table",
         ["employeeMaintenance.action"] = "Action",
         ["employeeMaintenance.edit"] = "Edit",
         ["employeeMaintenance.noRows"] = "No employees match the selected filters.",
+        ["employeeMaintenance.tableEmpty"] = "The Employees table contains no rows. This page maintains dbo.Employees only; test users in ADObjects or the request queue are not automatically Employees records.",
         ["employeeMaintenance.liveAd"] = "Live AD",
         ["employeeMaintenance.noLiveAd"] = "No live AD",
         ["employeeMaintenance.currentAssignment"] = "Current assignment",
@@ -426,14 +431,15 @@
                     <th>@T("employeeMaintenance.dataState")</th>
                     <th>@T("employeeMaintenance.lastAssignment")</th>
                     <th>@T("employeeMaintenance.reviewed")</th>
-                    <th>@T("employeeMaintenance.history")</th>
+                    <th>@T("employeeMaintenance.assignmentReferences")</th>
+                    <th>@T("employeeMaintenance.requestReferences")</th>
                     <th data-sortable="false">@T("employeeMaintenance.action")</th>
                 </tr>
             </thead>
             <tbody>
                 @if (Model.Employees.Count == 0)
                 {
-                    <tr><td colspan="9" class="text-center text-muted py-4">@T("employeeMaintenance.noRows")</td></tr>
+                    <tr><td colspan="10" class="text-center text-muted py-4">@(Model.Summary.Total == 0 ? T("employeeMaintenance.tableEmpty") : T("employeeMaintenance.noRows"))</td></tr>
                 }
                 else
                 {
@@ -473,19 +479,91 @@
                                 }
                             </td>
                             <td>
-                                <div class="small">@F("employeeMaintenance.assignments", employee.AssignmentCount)</div>
-                                <div class="small">@F("employeeMaintenance.requests", employee.RequestCount)</div>
+                                @if (employee.AssignmentReferences.Count == 0)
+                                {
+                                    <span class="text-muted small">@T("employeeMaintenance.referenceNone")</span>
+                                }
+                                else
+                                {
+                                    <details class="employee-reference-details">
+                                        <summary class="small">@F("employeeMaintenance.assignments", employee.AssignmentCount)</summary>
+                                        <div class="employee-reference-list mt-1">
+                                            @foreach (var assignment in employee.AssignmentReferences)
+                                            {
+                                                <div class="small border-top pt-1 mt-1">
+                                                    <strong>#@assignment.AssignmentId</strong>
+                                                    @if (!string.IsNullOrWhiteSpace(assignment.ProjectNumber) || !string.IsNullOrWhiteSpace(assignment.ProjectName))
+                                                    {
+                                                        <span> · @string.Join(" — ", new[] { assignment.ProjectNumber, assignment.ProjectName }.Where(v => !string.IsNullOrWhiteSpace(v)))</span>
+                                                    }
+                                                    <div class="text-muted">
+                                                        @assignment.StartDate.ToString("dd.MM.yyyy") – @(assignment.EndDate?.ToString("dd.MM.yyyy") ?? "∞")
+                                                        @if (!string.IsNullOrWhiteSpace(assignment.Status)) { <span> · @assignment.Status</span> }
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </details>
+                                }
                             </td>
                             <td>
-                                <a class="btn btn-sm btn-outline-primary"
-                                   asp-page="/Employees/Maintenance"
-                                   asp-route-search="@Model.Search"
-                                   asp-route-statusFilter="@Model.StatusFilter"
-                                   asp-route-stateFilter="@Model.StateFilter"
-                                   asp-route-reviewDays="@Model.ReviewDays"
-                                   asp-route-pageNumber="@Model.PageNumber"
-                                   asp-route-editId="@employee.EmployeeId"
-                                   asp-fragment="employee-editor">@T("employeeMaintenance.edit")</a>
+                                @if (employee.RequestReferences.Count == 0)
+                                {
+                                    <span class="text-muted small">@T("employeeMaintenance.referenceNone")</span>
+                                }
+                                else
+                                {
+                                    <details class="employee-reference-details">
+                                        <summary class="small">@F("employeeMaintenance.requests", employee.RequestCount)</summary>
+                                        <div class="employee-reference-list mt-1">
+                                            @foreach (var request in employee.RequestReferences)
+                                            {
+                                                <div class="small border-top pt-1 mt-1">
+                                                    <strong>#@request.RequestId</strong> · @request.RequestType · @request.Status
+                                                    @if (!string.IsNullOrWhiteSpace(request.ProjectNumber) || !string.IsNullOrWhiteSpace(request.ProjectName))
+                                                    {
+                                                        <div>@string.Join(" — ", new[] { request.ProjectNumber, request.ProjectName }.Where(v => !string.IsNullOrWhiteSpace(v)))</div>
+                                                    }
+                                                    <div class="text-muted">@((request.ExecuteAfter ?? request.CreatedAt)?.ToString("dd.MM.yyyy HH:mm") ?? "-")</div>
+                                                </div>
+                                            }
+                                        </div>
+                                    </details>
+                                }
+                            </td>
+                            <td class="text-nowrap">
+                                <div class="d-flex flex-wrap gap-1">
+                                    <a class="btn btn-sm btn-outline-primary"
+                                       asp-page="/Employees/Maintenance"
+                                       asp-route-search="@Model.Search"
+                                       asp-route-statusFilter="@Model.StatusFilter"
+                                       asp-route-stateFilter="@Model.StateFilter"
+                                       asp-route-reviewDays="@Model.ReviewDays"
+                                       asp-route-pageNumber="@Model.PageNumber"
+                                       asp-route-editId="@employee.EmployeeId"
+                                       asp-fragment="employee-editor">@T("employeeMaintenance.edit")</a>
+
+                                    @if (employee.CanDelete)
+                                    {
+                                        <form method="post" asp-page-handler="Delete" class="d-inline" onsubmit="return confirm(@Html.Raw(deleteConfirm));">
+                                            <input type="hidden" name="employeeId" value="@employee.EmployeeId" />
+                                            <input type="hidden" name="DeleteReason" value="@(T("employeeMaintenance.quickDeleteReason"))" />
+                                            <input type="hidden" name="Search" value="@Model.Search" />
+                                            <input type="hidden" name="StatusFilter" value="@Model.StatusFilter" />
+                                            <input type="hidden" name="StateFilter" value="@Model.StateFilter" />
+                                            <input type="hidden" name="ReviewDays" value="@Model.ReviewDays" />
+                                            <input type="hidden" name="PageNumber" value="@Model.PageNumber" />
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">@T("employeeMaintenance.delete")</button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger" disabled
+                                                title="@(employee.HasProtectedHistory ? T("employeeMaintenance.deleteBlocked") : T("employeeMaintenance.message.deleteNotCandidate"))">
+                                            @T("employeeMaintenance.delete")
+                                        </button>
+                                    }
+                                </div>
                             </td>
                         </tr>
                     }

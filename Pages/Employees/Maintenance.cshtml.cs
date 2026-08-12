@@ -376,6 +376,21 @@ ORDER BY Status;";
     WHERE a.EndDate IS NULL
        OR a.EndDate >= CAST(GETDATE() AS date)
     GROUP BY a.EmployeeId
+),
+QueueIdentityLinks AS
+(
+    SELECT DISTINCT queueIdentity.EmployeeId
+    FROM dbo.ADUserChangeQueue queueIdentity
+    INNER JOIN dbo.ADObjects queueAd
+        ON ISNULL(queueAd.IsDeleted, 0) = 0
+       AND
+       (
+           (queueIdentity.TargetObjectGUID IS NOT NULL AND queueAd.ObjectGUID = queueIdentity.TargetObjectGUID)
+           OR
+           (queueIdentity.TargetObjectGUID IS NULL
+            AND queueAd.SamAccountName = COALESCE(NULLIF(queueIdentity.TargetSamAccountName, N''), NULLIF(queueIdentity.NewSamAccountName, N'')))
+       )
+    WHERE queueIdentity.EmployeeId IS NOT NULL
 )
 SELECT
     COUNT_BIG(*) AS TotalCount,
@@ -384,10 +399,12 @@ SELECT
     SUM(CASE WHEN e.Status <> N'Merged'
                   AND (ad.ObjectGUID IS NULL OR ISNULL(ad.IsDeleted, 0) = 1)
                   AND ISNULL(currentAssignment.CurrentAssignmentCount, 0) = 0
+                  AND queueIdentity.EmployeeId IS NULL
              THEN 1 ELSE 0 END) AS StaleCount
 FROM dbo.Employees e
 LEFT JOIN dbo.ADObjects ad ON ad.ObjectGUID = e.CurrentADObjectGuid
-LEFT JOIN CurrentAssignments currentAssignment ON currentAssignment.EmployeeId = e.EmployeeId;";
+LEFT JOIN CurrentAssignments currentAssignment ON currentAssignment.EmployeeId = e.EmployeeId
+LEFT JOIN QueueIdentityLinks queueIdentity ON queueIdentity.EmployeeId = e.EmployeeId;";
         cmd.Parameters.Add(new SqlParameter("@ReviewDays", System.Data.SqlDbType.Int) { Value = ReviewDays });
         await using var reader = await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
         if (await reader.ReadAsync(HttpContext.RequestAborted))
@@ -404,26 +421,17 @@ LEFT JOIN CurrentAssignments currentAssignment ON currentAssignment.EmployeeId =
 
     private async Task LoadEmployeesAsync(SqlConnection cn)
     {
-        var filterSql = BuildFilterSql();
+        var whereSql = BuildWhereSql();
+
         await using (var countCmd = cn.CreateCommand())
         {
             countCmd.CommandText = $@"
-SELECT COUNT(*)
+SELECT COUNT_BIG(*)
 FROM dbo.Employees e
-LEFT JOIN dbo.ADObjects ad ON ad.ObjectGUID = e.CurrentADObjectGuid
-OUTER APPLY
-(
-    SELECT
-        COUNT_BIG(*) AS AssignmentCount,
-        SUM(CASE WHEN a.EndDate IS NULL OR a.EndDate >= CAST(GETDATE() AS date) THEN 1 ELSE 0 END) AS CurrentAssignmentCount,
-        MAX(COALESCE(a.EndDate, a.StartDate)) AS LastAssignmentDate
-    FROM dbo.Assignments a
-    WHERE a.EmployeeId = e.EmployeeId
-) assignmentInfo
-WHERE 1 = 1
-{filterSql};";
-            AddFilterParameters(countCmd);
-            TotalRows = Convert.ToInt32(await countCmd.ExecuteScalarAsync(HttpContext.RequestAborted));
+{whereSql};";
+            AddWhereParameters(countCmd);
+            var countValue = await countCmd.ExecuteScalarAsync(HttpContext.RequestAborted);
+            TotalRows = countValue is null or DBNull ? 0 : Convert.ToInt32(countValue);
         }
 
         if (PageNumber > TotalPages) PageNumber = TotalPages;
@@ -437,44 +445,58 @@ SELECT
     e.CanonicalSurname,
     e.PrivateEmail,
     e.MobilePhone,
-    e.CurrentSamAccountName,
-    e.CurrentUPN,
+    COALESCE(NULLIF(e.CurrentSamAccountName, N''), queueAd.SamAccountName, N'') AS CurrentSamAccountName,
+    COALESCE(NULLIF(e.CurrentUPN, N''), queueAd.UserPrincipalName, N'') AS CurrentUPN,
     e.Status,
     e.IsTestData,
     e.LastReviewedAt,
     e.LastReviewedBy,
     e.MaintenanceNote,
-    CASE WHEN ad.ObjectGUID IS NOT NULL AND ISNULL(ad.IsDeleted, 0) = 0 THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS HasLiveAd,
-    ISNULL(CONVERT(int, assignmentInfo.AssignmentCount), 0) AS AssignmentCount,
-    ISNULL(CONVERT(int, assignmentInfo.CurrentAssignmentCount), 0) AS CurrentAssignmentCount,
-    assignmentInfo.LastAssignmentDate,
-    ISNULL(requestInfo.RequestCount, 0) AS RequestCount
+    CASE WHEN EXISTS
+    (
+        SELECT 1
+        FROM dbo.ADObjects ad
+        WHERE ad.ObjectGUID = e.CurrentADObjectGuid
+          AND ISNULL(ad.IsDeleted, 0) = 0
+    ) OR queueAd.ObjectGUID IS NOT NULL
+      THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS HasLiveAd,
+    CONVERT(int, (SELECT COUNT_BIG(*) FROM dbo.Assignments a WHERE a.EmployeeId = e.EmployeeId)) AS AssignmentCount,
+    CONVERT(int, (SELECT COUNT_BIG(*)
+                  FROM dbo.Assignments a
+                  WHERE a.EmployeeId = e.EmployeeId
+                    AND (a.EndDate IS NULL OR a.EndDate >= CAST(GETDATE() AS date)))) AS CurrentAssignmentCount,
+    (SELECT MAX(COALESCE(a.EndDate, a.StartDate))
+     FROM dbo.Assignments a
+     WHERE a.EmployeeId = e.EmployeeId) AS LastAssignmentDate,
+    CONVERT(int, (SELECT COUNT_BIG(*) FROM dbo.ADUserChangeQueue q WHERE q.EmployeeId = e.EmployeeId)) AS RequestCount
 FROM dbo.Employees e
-LEFT JOIN dbo.ADObjects ad ON ad.ObjectGUID = e.CurrentADObjectGuid
 OUTER APPLY
 (
-    SELECT
-        COUNT_BIG(*) AS AssignmentCount,
-        SUM(CASE WHEN a.EndDate IS NULL OR a.EndDate >= CAST(GETDATE() AS date) THEN 1 ELSE 0 END) AS CurrentAssignmentCount,
-        MAX(COALESCE(a.EndDate, a.StartDate)) AS LastAssignmentDate
-    FROM dbo.Assignments a
-    WHERE a.EmployeeId = e.EmployeeId
-) assignmentInfo
-OUTER APPLY
-(
-    SELECT COUNT(*) AS RequestCount
+    SELECT TOP (1)
+        ad.ObjectGUID,
+        ad.SamAccountName,
+        ad.UserPrincipalName
     FROM dbo.ADUserChangeQueue q
+    INNER JOIN dbo.ADObjects ad
+        ON ISNULL(ad.IsDeleted, 0) = 0
+       AND
+       (
+           (q.TargetObjectGUID IS NOT NULL AND ad.ObjectGUID = q.TargetObjectGUID)
+           OR
+           (q.TargetObjectGUID IS NULL
+            AND ad.SamAccountName = COALESCE(NULLIF(q.TargetSamAccountName, N''), NULLIF(q.NewSamAccountName, N'')))
+       )
     WHERE q.EmployeeId = e.EmployeeId
-) requestInfo
-WHERE 1 = 1
-{filterSql}
+    ORDER BY q.RequestId DESC
+) queueAd
+{whereSql}
 ORDER BY
     CASE WHEN e.IsTestData = 1 THEN 0 ELSE 1 END,
     CASE WHEN e.LastReviewedAt IS NULL THEN 0 ELSE 1 END,
     e.LastReviewedAt,
     e.EmployeeId DESC
 OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
-        AddFilterParameters(cmd);
+        AddWhereParameters(cmd);
         cmd.Parameters.Add(new SqlParameter("@Offset", System.Data.SqlDbType.Int) { Value = offset });
         cmd.Parameters.Add(new SqlParameter("@PageSize", System.Data.SqlDbType.Int) { Value = PageSize });
 
@@ -502,39 +524,219 @@ OFFSET @Offset ROWS FETCH NEXT @PageSize ROWS ONLY;";
                 RequestCount = reader.GetInt32(16)
             });
         }
+
+        await reader.DisposeAsync();
+        await LoadVisibleReferencesAsync(cn);
     }
 
-    private string BuildFilterSql()
+    private async Task LoadVisibleReferencesAsync(SqlConnection cn)
     {
-        return @"
-  AND
-  (
-      @Search = N''
-      OR CONVERT(nvarchar(30), e.EmployeeId) = @Search
-      OR CONCAT(ISNULL(e.CanonicalGivenName, N''), N' ', ISNULL(e.CanonicalSurname, N'')) LIKE N'%' + @Search + N'%'
-      OR ISNULL(e.PrivateEmail, N'') LIKE N'%' + @Search + N'%'
-      OR ISNULL(e.MobilePhone, N'') LIKE N'%' + @Search + N'%'
-      OR ISNULL(e.CurrentSamAccountName, N'') LIKE N'%' + @Search + N'%'
-      OR ISNULL(e.CurrentUPN, N'') LIKE N'%' + @Search + N'%'
-      OR ISNULL(e.MaintenanceNote, N'') LIKE N'%' + @Search + N'%'
-  )
-  AND (@Status = N'' OR e.Status = @Status)
-  AND
-  (
-      @State = N''
-      OR (@State = N'current' AND (ad.ObjectGUID IS NOT NULL AND ISNULL(ad.IsDeleted, 0) = 0 OR ISNULL(assignmentInfo.CurrentAssignmentCount, 0) > 0))
-      OR (@State = N'stale' AND e.Status <> N'Merged' AND (ad.ObjectGUID IS NULL OR ISNULL(ad.IsDeleted, 0) = 1) AND ISNULL(assignmentInfo.CurrentAssignmentCount, 0) = 0)
-      OR (@State = N'needsReview' AND e.Status <> N'Merged' AND (e.LastReviewedAt IS NULL OR e.LastReviewedAt < DATEADD(day, -@ReviewDays, SYSDATETIME())))
-      OR (@State = N'test' AND e.IsTestData = 1)
-  )";
+        if (Employees.Count == 0) return;
+
+        var byId = Employees.ToDictionary(e => e.EmployeeId);
+        var parameterNames = new List<string>(Employees.Count);
+
+        await using (var assignmentCmd = cn.CreateCommand())
+        {
+            for (var i = 0; i < Employees.Count; i++)
+            {
+                var name = $"@EmployeeId{i}";
+                parameterNames.Add(name);
+                assignmentCmd.Parameters.Add(new SqlParameter(name, System.Data.SqlDbType.BigInt) { Value = Employees[i].EmployeeId });
+            }
+
+            assignmentCmd.CommandText = $@"
+SELECT
+    a.EmployeeId,
+    a.AssignmentId,
+    ISNULL(a.ProjectNumber, N''),
+    ISNULL(a.ProjectName, N''),
+    a.StartDate,
+    a.EndDate,
+    ISNULL(a.Status, N'')
+FROM dbo.Assignments a
+WHERE a.EmployeeId IN ({string.Join(", ", parameterNames)})
+ORDER BY a.EmployeeId, a.StartDate DESC, a.AssignmentId DESC;";
+
+            await using var assignmentReader = await assignmentCmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+            while (await assignmentReader.ReadAsync(HttpContext.RequestAborted))
+            {
+                var employeeId = assignmentReader.GetInt64(0);
+                if (!byId.TryGetValue(employeeId, out var employee)) continue;
+                employee.AssignmentReferences.Add(new AssignmentReference
+                {
+                    AssignmentId = assignmentReader.GetInt64(1),
+                    ProjectNumber = Get(assignmentReader, 2),
+                    ProjectName = Get(assignmentReader, 3),
+                    StartDate = assignmentReader.GetDateTime(4),
+                    EndDate = assignmentReader.IsDBNull(5) ? null : assignmentReader.GetDateTime(5),
+                    Status = Get(assignmentReader, 6)
+                });
+            }
+        }
+
+        parameterNames.Clear();
+        await using (var requestCmd = cn.CreateCommand())
+        {
+            for (var i = 0; i < Employees.Count; i++)
+            {
+                var name = $"@EmployeeId{i}";
+                parameterNames.Add(name);
+                requestCmd.Parameters.Add(new SqlParameter(name, System.Data.SqlDbType.BigInt) { Value = Employees[i].EmployeeId });
+            }
+
+            requestCmd.CommandText = $@"
+SELECT
+    q.EmployeeId,
+    q.RequestId,
+    ISNULL(q.RequestType, N''),
+    ISNULL(q.Status, N''),
+    q.ExecuteAfter,
+    q.CreatedAt,
+    ISNULL(q.ProjectNumber, N''),
+    ISNULL(q.ProjectName, N'')
+FROM dbo.ADUserChangeQueue q
+WHERE q.EmployeeId IN ({string.Join(", ", parameterNames)})
+ORDER BY q.EmployeeId, q.CreatedAt DESC, q.RequestId DESC;";
+
+            await using var requestReader = await requestCmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+            while (await requestReader.ReadAsync(HttpContext.RequestAborted))
+            {
+                var employeeId = requestReader.GetInt64(0);
+                if (!byId.TryGetValue(employeeId, out var employee)) continue;
+                employee.RequestReferences.Add(new RequestReference
+                {
+                    RequestId = requestReader.GetInt64(1),
+                    RequestType = Get(requestReader, 2),
+                    Status = Get(requestReader, 3),
+                    ExecuteAfter = requestReader.IsDBNull(4) ? null : requestReader.GetDateTime(4),
+                    CreatedAt = requestReader.IsDBNull(5) ? null : requestReader.GetDateTime(5),
+                    ProjectNumber = Get(requestReader, 6),
+                    ProjectName = Get(requestReader, 7)
+                });
+            }
+        }
     }
 
-    private void AddFilterParameters(SqlCommand cmd)
+    private string BuildWhereSql()
     {
-        cmd.Parameters.AddNVarChar("@Search", Search ?? string.Empty, 320);
-        cmd.Parameters.AddNVarChar("@Status", StatusFilter ?? string.Empty, 50);
-        cmd.Parameters.AddNVarChar("@State", StateFilter ?? string.Empty, 30);
-        cmd.Parameters.Add(new SqlParameter("@ReviewDays", System.Data.SqlDbType.Int) { Value = ReviewDays });
+        var clauses = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(Search))
+        {
+            clauses.Add(@"
+(
+    CONVERT(nvarchar(30), e.EmployeeId) = @Search
+    OR CONCAT(ISNULL(e.CanonicalGivenName, N''), N' ', ISNULL(e.CanonicalSurname, N'')) LIKE N'%' + @Search + N'%'
+    OR ISNULL(e.PrivateEmail, N'') LIKE N'%' + @Search + N'%'
+    OR ISNULL(e.MobilePhone, N'') LIKE N'%' + @Search + N'%'
+    OR ISNULL(e.CurrentSamAccountName, N'') LIKE N'%' + @Search + N'%'
+    OR ISNULL(e.CurrentUPN, N'') LIKE N'%' + @Search + N'%'
+    OR ISNULL(e.MaintenanceNote, N'') LIKE N'%' + @Search + N'%'
+    OR EXISTS
+    (
+        SELECT 1
+        FROM dbo.ADUserChangeQueue identityRequest
+        WHERE identityRequest.EmployeeId = e.EmployeeId
+          AND
+          (
+              ISNULL(identityRequest.TargetSamAccountName, N'') LIKE N'%' + @Search + N'%'
+              OR ISNULL(identityRequest.NewSamAccountName, N'') LIKE N'%' + @Search + N'%'
+              OR ISNULL(identityRequest.NewUserPrincipalName, N'') LIKE N'%' + @Search + N'%'
+          )
+    )
+)");
+        }
+
+        if (!string.IsNullOrWhiteSpace(StatusFilter))
+            clauses.Add("e.Status = @Status");
+
+        switch (StateFilter)
+        {
+            case "current":
+                clauses.Add(@"(
+    EXISTS
+    (
+        SELECT 1 FROM dbo.ADObjects ad
+        WHERE ad.ObjectGUID = e.CurrentADObjectGuid
+          AND ISNULL(ad.IsDeleted, 0) = 0
+    )
+    OR EXISTS
+    (
+        SELECT 1 FROM dbo.Assignments a
+        WHERE a.EmployeeId = e.EmployeeId
+          AND (a.EndDate IS NULL OR a.EndDate >= CAST(GETDATE() AS date))
+    )
+    OR EXISTS
+    (
+        SELECT 1
+        FROM dbo.ADUserChangeQueue q
+        INNER JOIN dbo.ADObjects ad
+            ON ISNULL(ad.IsDeleted, 0) = 0
+           AND
+           (
+               (q.TargetObjectGUID IS NOT NULL AND ad.ObjectGUID = q.TargetObjectGUID)
+               OR
+               (q.TargetObjectGUID IS NULL
+                AND ad.SamAccountName = COALESCE(NULLIF(q.TargetSamAccountName, N''), NULLIF(q.NewSamAccountName, N'')))
+           )
+        WHERE q.EmployeeId = e.EmployeeId
+    )
+)");
+                break;
+            case "stale":
+                clauses.Add(@"(
+    e.Status <> N'Merged'
+    AND NOT EXISTS
+    (
+        SELECT 1 FROM dbo.ADObjects ad
+        WHERE ad.ObjectGUID = e.CurrentADObjectGuid
+          AND ISNULL(ad.IsDeleted, 0) = 0
+    )
+    AND NOT EXISTS
+    (
+        SELECT 1 FROM dbo.Assignments a
+        WHERE a.EmployeeId = e.EmployeeId
+          AND (a.EndDate IS NULL OR a.EndDate >= CAST(GETDATE() AS date))
+    )
+    AND NOT EXISTS
+    (
+        SELECT 1
+        FROM dbo.ADUserChangeQueue q
+        INNER JOIN dbo.ADObjects ad
+            ON ISNULL(ad.IsDeleted, 0) = 0
+           AND
+           (
+               (q.TargetObjectGUID IS NOT NULL AND ad.ObjectGUID = q.TargetObjectGUID)
+               OR
+               (q.TargetObjectGUID IS NULL
+                AND ad.SamAccountName = COALESCE(NULLIF(q.TargetSamAccountName, N''), NULLIF(q.NewSamAccountName, N'')))
+           )
+        WHERE q.EmployeeId = e.EmployeeId
+    )
+)");
+                break;
+            case "needsReview":
+                clauses.Add("(e.Status <> N'Merged' AND (e.LastReviewedAt IS NULL OR e.LastReviewedAt < DATEADD(day, -@ReviewDays, SYSDATETIME())))");
+                break;
+            case "test":
+                clauses.Add("e.IsTestData = 1");
+                break;
+        }
+
+        return clauses.Count == 0
+            ? string.Empty
+            : "WHERE " + string.Join("\n  AND ", clauses);
+    }
+
+    private void AddWhereParameters(SqlCommand cmd)
+    {
+        if (!string.IsNullOrWhiteSpace(Search))
+            cmd.Parameters.AddNVarChar("@Search", Search, 320);
+        if (!string.IsNullOrWhiteSpace(StatusFilter))
+            cmd.Parameters.AddNVarChar("@Status", StatusFilter, 50);
+        if (string.Equals(StateFilter, "needsReview", StringComparison.OrdinalIgnoreCase))
+            cmd.Parameters.Add(new SqlParameter("@ReviewDays", System.Data.SqlDbType.Int) { Value = ReviewDays });
     }
 
     private async Task<EmployeeEditor?> LoadEditorAsync(SqlConnection cn, long employeeId)
@@ -690,6 +892,21 @@ SELECT
                       WHERE currentAssignment.EmployeeId = e.EmployeeId
                         AND (currentAssignment.EndDate IS NULL OR currentAssignment.EndDate >= CAST(GETDATE() AS date))
                   )
+                  AND NOT EXISTS
+                  (
+                      SELECT 1
+                      FROM dbo.ADUserChangeQueue queueIdentity
+                      INNER JOIN dbo.ADObjects queueAd
+                          ON ISNULL(queueAd.IsDeleted, 0) = 0
+                         AND
+                         (
+                             (queueIdentity.TargetObjectGUID IS NOT NULL AND queueAd.ObjectGUID = queueIdentity.TargetObjectGUID)
+                             OR
+                             (queueIdentity.TargetObjectGUID IS NULL
+                              AND queueAd.SamAccountName = COALESCE(NULLIF(queueIdentity.TargetSamAccountName, N''), NULLIF(queueIdentity.NewSamAccountName, N'')))
+                         )
+                      WHERE queueIdentity.EmployeeId = e.EmployeeId
+                  )
               )
          THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END
 FROM dbo.Employees e
@@ -811,20 +1028,44 @@ VALUES
         public int CurrentAssignmentCount { get; init; }
         public DateTime? LastAssignmentDate { get; init; }
         public int RequestCount { get; init; }
+        public List<AssignmentReference> AssignmentReferences { get; } = new();
+        public List<RequestReference> RequestReferences { get; } = new();
         public bool IsStale => !string.Equals(Status, "Merged", StringComparison.OrdinalIgnoreCase)
             && !HasLiveAd
             && CurrentAssignmentCount == 0;
+        public bool HasProtectedHistory => AssignmentCount > 0 || RequestCount > 0;
+        public bool CanDelete => !string.Equals(Status, "Merged", StringComparison.OrdinalIgnoreCase)
+            && !HasProtectedHistory
+            && (IsTestData || IsStale);
     }
 
     public sealed class EmployeeEditor : EmployeeRow
     {
         public Guid? CurrentADObjectGuid { get; init; }
-        public bool HasProtectedHistory => AssignmentCount > 0 || RequestCount > 0;
-        public bool CanDelete => !string.Equals(Status, "Merged", StringComparison.OrdinalIgnoreCase)
-            && !HasProtectedHistory
-            && (IsTestData || IsStale);
         public bool CanClearAdLink => CurrentADObjectGuid.HasValue
             && (IsTestData || !HasLiveAd);
+    }
+
+
+    public sealed class AssignmentReference
+    {
+        public long AssignmentId { get; init; }
+        public string ProjectNumber { get; init; } = string.Empty;
+        public string ProjectName { get; init; } = string.Empty;
+        public DateTime StartDate { get; init; }
+        public DateTime? EndDate { get; init; }
+        public string Status { get; init; } = string.Empty;
+    }
+
+    public sealed class RequestReference
+    {
+        public long RequestId { get; init; }
+        public string RequestType { get; init; } = string.Empty;
+        public string Status { get; init; } = string.Empty;
+        public DateTime? ExecuteAfter { get; init; }
+        public DateTime? CreatedAt { get; init; }
+        public string ProjectNumber { get; init; } = string.Empty;
+        public string ProjectName { get; init; } = string.Empty;
     }
 
     public sealed class AuditRow

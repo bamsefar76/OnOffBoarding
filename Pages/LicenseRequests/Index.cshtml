@@ -45,7 +45,7 @@
         ["licenseRequests.validation.selectLicense"] = "Select at least one license.",
         ["licenseRequests.validation.unavailableLicense"] = "One or more selected licenses are unavailable.",
         ["licenseRequests.validation.adGroupConfigurationMissing"] = "One or more automatic licenses are missing their AD group configuration. Contact IT.",
-        ["licenseRequests.validation.duplicateFamily"] = "Select only one license from product family '{0}'.",
+        ["licenseRequests.validation.familyLimit"] = "You selected {1} licenses from family '{0}'. Maximum is {2}; choose '{3}' instead.",
         ["licenseRequests.validation.businessReasonRequired"] = "Business reason is required.",
         ["licenseRequests.validation.businessReasonTooLong"] = "Business reason cannot be longer than 2000 characters.",
         ["licenseRequests.validation.startDateInvalid"] = "Enter a valid start date in dd.MM.yyyy format.",
@@ -134,7 +134,7 @@
         "licenseRequests.validation.selectLicense" => T("licenseRequests.validation.selectLicense"),
         "licenseRequests.validation.unavailableLicense" => T("licenseRequests.validation.unavailableLicense"),
         "licenseRequests.validation.adGroupConfigurationMissing" => T("licenseRequests.validation.adGroupConfigurationMissing"),
-        "licenseRequests.validation.duplicateFamily" => F("licenseRequests.validation.duplicateFamily", issue.Argument ?? ""),
+        "licenseRequests.validation.familyLimit" => F("licenseRequests.validation.familyLimit", issue.Argument ?? "", issue.Current ?? 0, issue.Limit ?? 0, issue.Replacement ?? ""),
         "licenseRequests.validation.businessReasonRequired" => T("licenseRequests.validation.businessReasonRequired"),
         "licenseRequests.validation.businessReasonTooLong" => T("licenseRequests.validation.businessReasonTooLong"),
         "licenseRequests.validation.startDateInvalid" => T("licenseRequests.validation.startDateInvalid"),
@@ -511,23 +511,6 @@
     }
 
     function refresh() {
-        const selectedFamilies = new Set(
-            boxes
-                .filter(x => x.checked && x.dataset.family)
-                .map(x => x.dataset.family)
-        );
-
-        for (const box of boxes) {
-            const disabled = box.dataset.family
-                && selectedFamilies.has(box.dataset.family)
-                && !box.checked;
-
-            box.disabled = disabled;
-
-            box.closest(".license-card")
-                ?.classList.toggle("opacity-50", disabled);
-        }
-
         refreshPeriod();
     }
 

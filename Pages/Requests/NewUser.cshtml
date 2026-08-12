@@ -2,6 +2,7 @@
 @model UserChangeQueueModel
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
+@inject AccessScopeService AccessScopeService
 
 @{
     var textFallbacks = new Dictionary<string, string>
@@ -70,6 +71,7 @@
     };
 
     var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    var automaticGroupsOpen = (await AccessScopeService.GetCurrentAsync(User, HttpContext.RequestAborted)).IsIT;
     ViewData["Title"] = Model.RequestId.HasValue
         ? string.Format(uiText.T("usercreate.titleEdit", textFallbacks["usercreate.titleEdit"]), Model.RequestId)
         : uiText.T("usercreate.titleNew", textFallbacks["usercreate.titleNew"]);
@@ -299,7 +301,9 @@
             <label>@T("field.enabled")</label>
             <input asp-for="Enabled" type="checkbox" /><br /><br />
 
-            <h3>@T("usercreate.automaticGroups")</h3>
+            <details class="mb-3" data-auto-open="@(automaticGroupsOpen ? "true" : "false")">
+                <summary class="fw-semibold mb-2">@T("usercreate.automaticGroups")</summary>
+                <div class="pt-2">
             @if (Model.RecommendedGroups.Any())
             {
                 <table class="table" style="width:100%; max-width:900px;">
@@ -340,6 +344,8 @@
             <button type="submit" name="SubmitAction" value="PreviewGroups">
                 @T("usercreate.previewAutomaticGroups")
             </button>
+                </div>
+            </details>
             <button type="submit" name="SubmitAction" value="SubmitRequest">
                 @(Model.RequestId.HasValue ? T("usercreate.saveChanges") : T("usercreate.submitRequest"))
             </button>

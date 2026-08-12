@@ -114,18 +114,15 @@ public sealed class IndexModel : PageModel
                 "licenseRequests.validation.adGroupConfigurationMissing"));
         }
 
-        var duplicateFamily = selected
-            .Where(x => !string.IsNullOrWhiteSpace(x.ProductFamily))
-            .GroupBy(
-                x => x.ProductFamily,
-                StringComparer.OrdinalIgnoreCase)
-            .FirstOrDefault(x => x.Count() > 1);
-
-        if (duplicateFamily is not null)
+        var familyViolations = await LoadFamilyRuleViolationsAsync(connection, selected);
+        foreach (var violation in familyViolations)
         {
             ValidationIssues.Add(new ValidationIssue(
-                "licenseRequests.validation.duplicateFamily",
-                duplicateFamily.Key));
+                "licenseRequests.validation.familyLimit",
+                violation.ProductFamily,
+                violation.SelectedCount,
+                violation.MaxSelectable,
+                violation.ReplacementName));
         }
 
         DateTime? startDate = null;
@@ -510,7 +507,9 @@ SELECT TOP (1)
         N''
     ),
     ISNULL(manager.Mail, N''),
-    COALESCE(currentAssignment.ProjectNumber, latestRequest.ProjectNumber, N'')
+    COALESCE(currentAssignment.ProjectNumber, latestRequest.ProjectNumber, N''),
+    ISNULL(userDomain.[domain], N''),
+    COALESCE(NULLIF(userDomain.Label,N''), userDomain.[domain], N'')
 FROM dbo.ADObjects AS ad
 LEFT JOIN dbo.ADObjects AS manager
     ON manager.SamAccountName = ad.ManagerSamAccountName
@@ -539,6 +538,13 @@ OUTER APPLY
       )
     ORDER BY queueItem.RequestId DESC
 ) AS latestRequest
+OUTER APPLY
+(
+    SELECT TOP (1) d.[domain], d.Label
+    FROM dbo.domains d
+    WHERE RIGHT(LOWER(ISNULL(NULLIF(ad.UserPrincipalName,N''),ad.Mail)), LEN(d.[domain])+1)=N'@'+LOWER(d.[domain])
+    ORDER BY LEN(d.[domain]) DESC
+) AS userDomain
 WHERE ad.SamAccountName = @Sam
   AND ISNULL(ad.IsDeleted, 0) = 0;";
 
@@ -565,7 +571,9 @@ WHERE ad.SamAccountName = @Sam
             ManagerSam = Get(reader, 3),
             ManagerName = Get(reader, 4),
             ManagerEmail = Get(reader, 5),
-            ProjectNumber = Get(reader, 6)
+            ProjectNumber = Get(reader, 6),
+            Domain = Get(reader, 7),
+            Label = Get(reader, 8)
         };
     }
 
@@ -576,6 +584,8 @@ WHERE ad.SamAccountName = @Sam
 
         await using var command =
             connection.CreateCommand();
+        command.Parameters.AddNVarChar("@UserDomain", CurrentUser?.Domain, 320);
+        command.Parameters.AddNVarChar("@UserLabel", CurrentUser?.Label, 320);
 
         command.CommandText = @"
 SELECT
@@ -597,6 +607,17 @@ SELECT
     ) AS CurrentInUse
 FROM dbo.LicenseProducts
 WHERE Active = 1
+  AND
+  (
+      NOT EXISTS (SELECT 1 FROM dbo.LicenseProductScopes scope WHERE scope.LicenseProductId=dbo.LicenseProducts.LicenseProductId)
+      OR EXISTS
+      (
+          SELECT 1 FROM dbo.LicenseProductScopes scope
+          WHERE scope.LicenseProductId=dbo.LicenseProducts.LicenseProductId
+            AND ((scope.ScopeType=N'Domain' AND scope.ScopeValue=@UserDomain)
+                 OR (scope.ScopeType=N'Label' AND scope.ScopeValue=@UserLabel))
+      )
+  )
 ORDER BY
     SortOrder,
     COALESCE(ProductFamily, Name),
@@ -626,6 +647,8 @@ ORDER BY
 
         await using var command =
             connection.CreateCommand();
+        command.Parameters.AddNVarChar("@UserDomain", CurrentUser?.Domain, 320);
+        command.Parameters.AddNVarChar("@UserLabel", CurrentUser?.Label, 320);
 
         var parameterNames =
             new List<string>();
@@ -659,6 +682,17 @@ SELECT
     ) AS CurrentInUse
 FROM dbo.LicenseProducts
 WHERE Active = 1
+  AND
+  (
+      NOT EXISTS (SELECT 1 FROM dbo.LicenseProductScopes scope WHERE scope.LicenseProductId=dbo.LicenseProducts.LicenseProductId)
+      OR EXISTS
+      (
+          SELECT 1 FROM dbo.LicenseProductScopes scope
+          WHERE scope.LicenseProductId=dbo.LicenseProducts.LicenseProductId
+            AND ((scope.ScopeType=N'Domain' AND scope.ScopeValue=@UserDomain)
+                 OR (scope.ScopeType=N'Label' AND scope.ScopeValue=@UserLabel))
+      )
+  )
   AND LicenseProductId IN
       ({string.Join(",", parameterNames)});";
 
@@ -675,6 +709,30 @@ WHERE Active = 1
             result.Add(ReadLicense(reader));
         }
 
+        return result;
+    }
+
+    private async Task<List<FamilyViolation>> LoadFamilyRuleViolationsAsync(SqlConnection connection, IReadOnlyCollection<LicenseOption> selected)
+    {
+        var result = new List<FamilyViolation>();
+        var families = selected.Where(x=>!string.IsNullOrWhiteSpace(x.ProductFamily))
+            .GroupBy(x=>x.ProductFamily,StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var family in families)
+        {
+            await using var cmd=connection.CreateCommand();
+            cmd.Parameters.AddNVarChar("@Family",family.Key,100);
+            cmd.CommandText=@"
+SELECT r.MaxSelectable, p.Name
+FROM dbo.LicenseFamilyRules r
+JOIN dbo.LicenseProducts p ON p.LicenseProductId=r.ReplacementLicenseProductId
+WHERE r.ProductFamily=@Family;";
+            await using var reader=await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+            if(await reader.ReadAsync(HttpContext.RequestAborted))
+            {
+                var max=reader.GetInt32(0);
+                if(family.Count()>max) result.Add(new FamilyViolation(family.Key,family.Count(),max,reader.GetString(1)));
+            }
+        }
         return result;
     }
 
@@ -863,7 +921,10 @@ ORDER BY product.Name;";
         string Key,
         string? Argument = null,
         int? Current = null,
-        int? Limit = null);
+        int? Limit = null,
+        string? Replacement = null);
+
+    private sealed record FamilyViolation(string ProductFamily,int SelectedCount,int MaxSelectable,string ReplacementName);
 
     public sealed class UserInfo
     {
@@ -874,6 +935,8 @@ ORDER BY product.Name;";
         public string ManagerName { get; init; } = "";
         public string ManagerEmail { get; init; } = "";
         public string ProjectNumber { get; init; } = "";
+        public string Domain { get; init; } = "";
+        public string Label { get; init; } = "";
     }
 
     public sealed class LicenseOption

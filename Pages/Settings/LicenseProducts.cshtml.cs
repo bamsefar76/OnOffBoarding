@@ -28,6 +28,18 @@ public sealed class LicenseProductsModel : PageModel
     [BindProperty]
     public EditModel Edit { get; set; } = new() { Active = true, SortOrder = 100, FulfillmentType = "Manual" };
 
+    [BindProperty]
+    public List<string> SelectedScopes { get; set; } = new();
+
+    [BindProperty]
+    public int? FamilyMaxSelectable { get; set; }
+
+    [BindProperty]
+    public int? FamilyReplacementLicenseProductId { get; set; }
+
+    public List<ScopeOption> ScopeOptions { get; } = new();
+    public List<ProductChoice> ReplacementProducts { get; } = new();
+
     [TempData]
     public string? StatusMessageKey { get; set; }
 
@@ -46,6 +58,9 @@ public sealed class LicenseProductsModel : PageModel
     {
         SelectedId = null;
         Edit = new EditModel { Active = true, SortOrder = 100, FulfillmentType = "Manual" };
+        SelectedScopes.Clear();
+        FamilyMaxSelectable = null;
+        FamilyReplacementLicenseProductId = null;
         await LoadPageAsync(loadSelected: false);
         return Page();
     }
@@ -55,6 +70,9 @@ public sealed class LicenseProductsModel : PageModel
         Normalize(Edit);
 
         ErrorMessageKey = Validate(Edit);
+        if (string.IsNullOrWhiteSpace(ErrorMessageKey))
+            ErrorMessageKey = ValidateFamilyRule(Edit);
+
         if (!string.IsNullOrWhiteSpace(ErrorMessageKey))
         {
             SelectedId = Edit.LicenseProductId > 0 ? Edit.LicenseProductId : null;
@@ -145,6 +163,12 @@ VALUES
             return Page();
         }
 
+        if (SelectedId.HasValue)
+        {
+            await ReplaceScopesAsync(cn, SelectedId.Value);
+            await SaveFamilyRuleAsync(cn, Edit.ProductFamily);
+        }
+
         return RedirectToPage(new { id = SelectedId, Search, ShowInactive });
     }
 
@@ -178,6 +202,8 @@ WHERE LicenseProductId = @Id;";
     private async Task LoadPageAsync(SqlConnection cn, bool loadSelected = true)
     {
         Products.Clear();
+        await LoadScopeOptionsAsync(cn);
+        await LoadReplacementProductsAsync(cn);
 
         await using (var cmd = cn.CreateCommand())
         {
@@ -282,7 +308,106 @@ WHERE LicenseProductId = @Id;";
                     SortOrder = reader.GetInt32(9)
                 };
             }
+
+            await reader.CloseAsync();
+
+            if (Edit.LicenseProductId > 0)
+            {
+                await LoadSelectedScopesAsync(cn, Edit.LicenseProductId);
+                await LoadFamilyRuleAsync(cn, Edit.ProductFamily);
+            }
         }
+    }
+
+    private async Task LoadScopeOptionsAsync(SqlConnection cn)
+    {
+        ScopeOptions.Clear();
+        await using var cmd = cn.CreateCommand();
+        cmd.CommandText = @"
+SELECT ScopeType, ScopeValue, DisplayText
+FROM
+(
+    SELECT N'Domain' ScopeType, [domain] ScopeValue, [domain] DisplayText FROM dbo.domains WHERE NULLIF(LTRIM(RTRIM([domain])),N'') IS NOT NULL
+    UNION
+    SELECT N'Label', Label, Label FROM dbo.domains WHERE NULLIF(LTRIM(RTRIM(Label)),N'') IS NOT NULL
+) x
+ORDER BY ScopeType, DisplayText;";
+        await using var reader = await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+        while (await reader.ReadAsync(HttpContext.RequestAborted))
+            ScopeOptions.Add(new ScopeOption(reader.GetString(0)+"|"+reader.GetString(1), reader.GetString(0), reader.GetString(2)));
+    }
+
+    private async Task LoadReplacementProductsAsync(SqlConnection cn)
+    {
+        ReplacementProducts.Clear();
+        await using var cmd=cn.CreateCommand();
+        cmd.CommandText="SELECT LicenseProductId,Name FROM dbo.LicenseProducts WHERE Active=1 ORDER BY Name;";
+        await using var reader=await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+        while(await reader.ReadAsync(HttpContext.RequestAborted)) ReplacementProducts.Add(new ProductChoice(reader.GetInt32(0),reader.GetString(1)));
+    }
+
+    private async Task LoadSelectedScopesAsync(SqlConnection cn,int id)
+    {
+        SelectedScopes.Clear();
+        await using var cmd=cn.CreateCommand(); cmd.Parameters.AddInt("@Id",id);
+        cmd.CommandText="SELECT ScopeType,ScopeValue FROM dbo.LicenseProductScopes WHERE LicenseProductId=@Id ORDER BY ScopeType,ScopeValue;";
+        await using var reader=await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+        while(await reader.ReadAsync(HttpContext.RequestAborted)) SelectedScopes.Add(reader.GetString(0)+"|"+reader.GetString(1));
+    }
+
+    private async Task ReplaceScopesAsync(SqlConnection cn,int id)
+    {
+        await using(var del=cn.CreateCommand()){del.Parameters.AddInt("@Id",id);del.CommandText="DELETE FROM dbo.LicenseProductScopes WHERE LicenseProductId=@Id;";await del.ExecuteNonQueryAsync(HttpContext.RequestAborted);}
+        foreach(var raw in SelectedScopes.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var parts=raw.Split('|',2); if(parts.Length!=2 || (parts[0]!="Domain" && parts[0]!="Label") || string.IsNullOrWhiteSpace(parts[1])) continue;
+            await using var ins=cn.CreateCommand(); ins.Parameters.AddInt("@Id",id); ins.Parameters.AddNVarChar("@Type",parts[0],20); ins.Parameters.AddNVarChar("@Value",parts[1].Trim(),320);
+            ins.CommandText="INSERT INTO dbo.LicenseProductScopes(LicenseProductId,ScopeType,ScopeValue) VALUES(@Id,@Type,@Value);"; await ins.ExecuteNonQueryAsync(HttpContext.RequestAborted);
+        }
+    }
+
+    private async Task LoadFamilyRuleAsync(SqlConnection cn,string? family)
+    {
+        FamilyMaxSelectable=null; FamilyReplacementLicenseProductId=null; if(string.IsNullOrWhiteSpace(family)) return;
+        await using var cmd=cn.CreateCommand();cmd.Parameters.AddNVarChar("@Family",family.Trim(),100);cmd.CommandText="SELECT MaxSelectable,ReplacementLicenseProductId FROM dbo.LicenseFamilyRules WHERE ProductFamily=@Family;";
+        await using var reader=await cmd.ExecuteReaderAsync(HttpContext.RequestAborted); if(await reader.ReadAsync(HttpContext.RequestAborted)){FamilyMaxSelectable=reader.GetInt32(0);FamilyReplacementLicenseProductId=reader.GetInt32(1);}
+    }
+
+    private async Task SaveFamilyRuleAsync(SqlConnection cn,string? family)
+    {
+        if(string.IsNullOrWhiteSpace(family)) return;
+        await using var cmd=cn.CreateCommand();cmd.Parameters.AddNVarChar("@Family",family.Trim(),100);
+        if(!FamilyMaxSelectable.HasValue || FamilyMaxSelectable<=0 || !FamilyReplacementLicenseProductId.HasValue)
+        { cmd.CommandText="DELETE FROM dbo.LicenseFamilyRules WHERE ProductFamily=@Family;"; await cmd.ExecuteNonQueryAsync(HttpContext.RequestAborted); return; }
+        cmd.Parameters.AddInt("@Max",FamilyMaxSelectable.Value);cmd.Parameters.AddInt("@Replacement",FamilyReplacementLicenseProductId.Value);
+        cmd.CommandText=@"
+MERGE dbo.LicenseFamilyRules AS target
+USING (SELECT @Family ProductFamily,@Max MaxSelectable,@Replacement ReplacementLicenseProductId) src
+ON target.ProductFamily=src.ProductFamily
+WHEN MATCHED THEN UPDATE SET MaxSelectable=src.MaxSelectable,ReplacementLicenseProductId=src.ReplacementLicenseProductId,UpdatedAt=SYSDATETIME()
+WHEN NOT MATCHED THEN INSERT(ProductFamily,MaxSelectable,ReplacementLicenseProductId) VALUES(src.ProductFamily,src.MaxSelectable,src.ReplacementLicenseProductId);";
+        await cmd.ExecuteNonQueryAsync(HttpContext.RequestAborted);
+    }
+
+
+    private string? ValidateFamilyRule(EditModel model)
+    {
+        var hasMax = FamilyMaxSelectable.HasValue;
+        var hasReplacement = FamilyReplacementLicenseProductId.HasValue;
+
+        if (!hasMax && !hasReplacement)
+            return null;
+
+        if (string.IsNullOrWhiteSpace(model.ProductFamily))
+            return "licenseProducts.validation.familyRequiredForRule";
+
+        if (!hasMax || !hasReplacement || FamilyMaxSelectable!.Value <= 0)
+            return "licenseProducts.validation.familyRuleIncomplete";
+
+        if (model.LicenseProductId > 0 && FamilyReplacementLicenseProductId == model.LicenseProductId)
+            return "licenseProducts.validation.familyReplacementSelf";
+
+        return null;
     }
 
     private static string? Validate(EditModel model)
@@ -362,6 +487,9 @@ WHERE LicenseProductId = @Id;";
         public bool Active { get; set; } = true;
         public int SortOrder { get; set; } = 100;
     }
+
+    public sealed record ScopeOption(string Value,string ScopeType,string DisplayText);
+    public sealed record ProductChoice(int Id,string Name);
 
     public sealed class ProductRow
     {

@@ -2,6 +2,7 @@
 @model UserChangeQueueWeb.Pages.Assignments.CreateModel
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
+@inject AccessScopeService AccessScopeService
 @{
     var textFallbacks = new Dictionary<string, string>
     {
@@ -51,7 +52,7 @@
         ["assignments.noLicensesAvailable"] = "No licenses are available for request.",
         ["assignments.licenseValidationUnavailable"] = "One or more selected licenses are no longer available.",
         ["assignments.licenseValidationAdGroupMissing"] = "One or more automatic licenses are missing their AD group configuration. Contact IT.",
-        ["assignments.licenseValidationDuplicateFamily"] = "Only one license from product family '{0}' can be selected.",
+        ["assignments.licenseValidationFamilyLimit"] = "You selected {1} licenses from family '{0}'. Maximum is {2}; choose '{3}' instead.",
         ["assignments.licenseValidationManagerRequired"] = "Select a manager before requesting licenses.",
         ["assignments.licenseValidationReasonRequired"] = "Enter a business reason for the selected licenses.",
         ["assignments.licenseValidationReasonTooLong"] = "The license business reason cannot be longer than 2000 characters.",
@@ -85,6 +86,7 @@
     var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
     string T(string key) => uiText.T(key, textFallbacks[key]);
     string F(string key, params object[] args) => string.Format(T(key), args);
+    var automaticGroupsOpen = (await AccessScopeService.GetCurrentAsync(User, HttpContext.RequestAborted)).IsIT;
     ViewData["Title"] = T("assignments.title");
     var licenseSectionOpen = !string.IsNullOrWhiteSpace(Model.LicenseValidationMessageKey);
 }
@@ -99,9 +101,11 @@
 @if (!string.IsNullOrWhiteSpace(Model.LicenseValidationMessageKey))
 {
     <div class="alert alert-danger">
-        @(string.IsNullOrWhiteSpace(Model.LicenseValidationMessageArgument)
-            ? T(Model.LicenseValidationMessageKey)
-            : F(Model.LicenseValidationMessageKey, Model.LicenseValidationMessageArgument))
+        @(Model.LicenseValidationMessageKey == "assignments.licenseValidationFamilyLimit"
+            ? F(Model.LicenseValidationMessageKey, Model.LicenseValidationMessageArgument ?? "", Model.LicenseValidationSelectedCount ?? 0, Model.LicenseValidationMaxCount ?? 0, Model.LicenseValidationReplacement ?? "")
+            : string.IsNullOrWhiteSpace(Model.LicenseValidationMessageArgument)
+                ? T(Model.LicenseValidationMessageKey)
+                : F(Model.LicenseValidationMessageKey, Model.LicenseValidationMessageArgument))
     </div>
 }
 
@@ -122,6 +126,7 @@
                             <option value="@domain.Domain"
                                     data-office="@domain.Office"
                                     data-company="@domain.Company"
+                                    data-label="@domain.Label"
                                     data-ou="@domain.OU"
                                     data-street="@domain.Street"
                                     data-zipcode="@domain.Zipcode"
@@ -367,7 +372,9 @@
                     <div class="row g-2">
                         @foreach (var license in Model.LicenseProducts)
                         {
-                            <div class="col-xl-4 col-md-6">
+                            <div class="col-xl-4 col-md-6 assignment-license-card"
+                                 data-license-domains="@license.AllowedDomains"
+                                 data-license-labels="@license.AllowedLabels">
                                 <div class="border rounded p-2 h-100">
                                     <div class="form-check mb-0">
                                         <input class="form-check-input assignment-license-checkbox"
@@ -424,8 +431,9 @@
         </div>
     </div>
 
-    <div class="mt-4">
-        <h3 class="h5">@T("usercreate.automaticGroups")</h3>
+    <details class="mt-4 mb-3" data-auto-open="@(automaticGroupsOpen ? "true" : "false")">
+        <summary class="fw-semibold">@T("usercreate.automaticGroups")</summary>
+        <div class="pt-2">
         @if (Model.RecommendedGroups.Any())
         {
             <table class="table table-sm">
@@ -461,7 +469,8 @@
         {
             <p class="text-muted">@T("usercreate.noAutomaticGroupsMatched")</p>
         }
-    </div>
+        </div>
+    </details>
 
     <div class="alert alert-info">
         @T("assignments.overlapNotice")
@@ -709,20 +718,25 @@
                     : '';
             }
 
-            function enforceLicenseFamilySelection(changedCheckbox) {
-                if (!changedCheckbox.checked) return;
-
-                const family = (changedCheckbox.dataset.licenseFamily || '').trim().toLocaleLowerCase();
-                if (!family) return;
-
-                for (const checkbox of licenseCheckboxes) {
-                    if (checkbox === changedCheckbox) continue;
-
-                    const otherFamily = (checkbox.dataset.licenseFamily || '').trim().toLocaleLowerCase();
-                    if (otherFamily === family) {
-                        checkbox.checked = false;
+            function filterLicensesByDomain() {
+                const selected = domainSelect.options[domainSelect.selectedIndex];
+                const domain = (domainSelect.value || '').toLocaleLowerCase();
+                const label = (selected?.dataset?.label || '').toLocaleLowerCase();
+                for (const card of document.querySelectorAll('.assignment-license-card')) {
+                    const domains = (card.dataset.licenseDomains || '').split(';').map(x => x.trim().toLocaleLowerCase()).filter(Boolean);
+                    const labels = (card.dataset.licenseLabels || '').split(';').map(x => x.trim().toLocaleLowerCase()).filter(Boolean);
+                    const global = domains.length === 0 && labels.length === 0;
+                    const visible = global || domains.includes(domain) || labels.includes(label);
+                    card.classList.toggle('d-none', !visible);
+                    if (!visible) {
+                        const checkbox = card.querySelector('.assignment-license-checkbox');
+                        if (checkbox) checkbox.checked = false;
                     }
                 }
+            }
+
+            function enforceLicenseFamilySelection(changedCheckbox) {
+                // Multiple products in a family are allowed up to the configured family limit.
             }
 
             function normalizeMobilePhone() {
@@ -786,6 +800,7 @@
                 loadProjects('');
                 loadManagers('');
                 filterComputerTypesByDomain();
+                filterLicensesByDomain();
             });
 
             employeeTypeSelect.addEventListener('change', updateEndDateVisibility);
@@ -794,6 +809,7 @@
             accessCardCheckbox?.addEventListener('change', toggleAccessCardGroups);
             toggleAccessCardGroups();
             filterComputerTypesByDomain();
+            filterLicensesByDomain();
 
             titleSelect?.addEventListener('change', updateOfficeLicenseFromTitle);
             updateOfficeLicenseFromTitle();

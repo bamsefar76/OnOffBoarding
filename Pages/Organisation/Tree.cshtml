@@ -1,4 +1,4 @@
-﻿@page
+@page
 @model UserChangeQueueWeb.Pages.Organisation.TreeModel
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
@@ -7,7 +7,14 @@
     {
         ["org.title"] = "Organisation",
         ["org.full"] = "Full organisation view",
-        ["org.mine"] = "Your reporting hierarchy",
+        ["org.mine"] = "Your visible reporting structure",
+        ["org.modeAd"] = "AD reporting",
+        ["org.modeProject"] = "Projects",
+        ["org.projectsNone"] = "No current projects are visible to you.",
+        ["org.projectLeaders"] = "Project leaders",
+        ["org.projectMembers"] = "Project members",
+        ["org.memberPeriod"] = "Period",
+        ["org.openEnded"] = "No end date",
         ["org.people"] = "people",
         ["org.searchPlaceholder"] = "Search name, title, department, office or email",
         ["org.expandAll"] = "Expand all",
@@ -45,7 +52,7 @@
         margin-left: calc(var(--depth) * 1.5rem);
         border: 1px solid var(--bs-border-color);
         border-radius: .75rem;
-        background: var(--bs-tertiary-bg);
+        background: var(--app-subtle-bg);
         color: var(--bs-body-color);
         padding: .8rem .95rem;
         display: grid;
@@ -60,7 +67,7 @@
     }
 
     .org-node[data-depth="0"] {
-        background: var(--bs-secondary-bg);
+        background: var(--app-card-header-bg);
         border-color: rgba(var(--bs-primary-rgb), .5);
         box-shadow: 0 .2rem .55rem rgba(0, 0, 0, .12);
     }
@@ -84,7 +91,7 @@
         height: 2rem;
         border: 1px solid var(--bs-border-color);
         border-radius: 50%;
-        background: var(--bs-secondary-bg);
+        background: var(--app-card-header-bg);
         color: var(--bs-body-color);
         font-weight: 700;
         line-height: 1;
@@ -101,7 +108,7 @@
     .org-toggle:focus-visible {
         border-color: var(--bs-primary);
         background: rgba(var(--bs-primary-rgb), .16);
-        color: var(--bs-emphasis-color);
+        color: var(--bs-body-color);
     }
 
     .org-toggle-placeholder {
@@ -112,11 +119,11 @@
     .org-name {
         font-weight: 650;
         font-size: 1.02rem;
-        color: var(--bs-emphasis-color);
+        color: var(--bs-body-color);
     }
 
     .org-meta {
-        color: var(--bs-secondary-color);
+        color: var(--app-muted-color);
         font-size: .9rem;
         overflow-wrap: anywhere;
     }
@@ -132,7 +139,7 @@
     .org-count {
         white-space: nowrap;
         color: var(--bs-body-color) !important;
-        background: var(--bs-secondary-bg) !important;
+        background: var(--app-card-header-bg) !important;
         border: 1px solid var(--bs-border-color);
     }
 
@@ -175,95 +182,84 @@
     </div>
 </div>
 
+<div class="btn-group mb-3" role="group">
+    <a class="btn @(Model.Mode == "ad" ? "btn-primary" : "btn-outline-primary")" asp-page="/Organisation/Tree" asp-route-mode="ad">@T("org.modeAd")</a>
+    <a class="btn @(Model.Mode == "project" ? "btn-primary" : "btn-outline-primary")" asp-page="/Organisation/Tree" asp-route-mode="project">@T("org.modeProject")</a>
+</div>
+
+@if (Model.Mode == "ad")
+{
 <div class="org-toolbar">
     <input id="orgSearch" class="form-control" style="max-width: 28rem;" type="search"
            placeholder="@T("org.searchPlaceholder")" />
     <button id="expandAll" type="button" class="btn btn-outline-secondary">@T("org.expandAll")</button>
     <button id="collapseAll" type="button" class="btn btn-outline-secondary">@T("org.collapseAll")</button>
 </div>
+}
 
-@if (Model.IncludedOuCount == 0)
+
+@if (Model.Mode == "project")
 {
-    <div class="alert alert-warning">
-        @T("org.noOu")
-    </div>
+    if (Model.ProjectStructures.Count == 0)
+    {
+        <div class="alert alert-info">@T("org.projectsNone")</div>
+    }
+    else
+    {
+        <div class="row g-3">
+        @foreach (var project in Model.ProjectStructures)
+        {
+            <div class="col-12">
+                <section class="card">
+                    <div class="card-header d-flex justify-content-between align-items-start gap-3 flex-wrap">
+                        <div><strong>@project.ProjectName</strong>@if (!string.IsNullOrWhiteSpace(project.ProjectNumber)) { <span> (@project.ProjectNumber)</span> }</div>
+                        <span class="text-muted">@project.Company</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3"><strong>@T("org.projectLeaders"):</strong> @string.Join(", ", project.Leaders.Select(x => x.DisplayName))</div>
+                        <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-2">
+                        @foreach (var member in project.Members)
+                        {
+                            <div class="col">
+                                <div class="border rounded p-2 h-100">
+                                    <div><strong>@member.DisplayName</strong></div>
+                                    @if (!string.IsNullOrWhiteSpace(member.Title)) { <div class="text-muted small">@member.Title</div> }
+                                    <div class="small">@T("org.memberPeriod"): @(member.StartDate?.ToString("dd.MM.yyyy")) – @(member.EndDate?.ToString("dd.MM.yyyy") ?? T("org.openEnded"))</div>
+                                </div>
+                            </div>
+                        }
+                        </div>
+                    </div>
+                </section>
+            </div>
+        }
+        </div>
+    }
+}
+else if (Model.IncludedOuCount == 0)
+{
+    <div class="alert alert-warning">@T("org.noOu")</div>
 }
 else if (Model.Nodes.Count == 0)
 {
-    <div class="alert alert-info">
-        @T("org.none")
-    </div>
+    <div class="alert alert-info">@T("org.none")</div>
 }
 else
 {
     <div id="orgTree" class="org-tree">
         @foreach (var node in Model.Nodes)
         {
-            var searchable = string.Join(" ", new[]
-            {
-                node.DisplayName,
-                node.SamAccountName,
-                node.Title,
-                node.Department,
-                node.Company,
-                node.Office,
-                node.Mail,
-                node.EmployeeType
-            }).ToLowerInvariant();
-
-            <article class="org-node @(node.Depth == 0 ? "" : "org-hidden")"
-                     style="--depth:@node.Depth"
-                     data-sam="@node.SamAccountName.ToLowerInvariant()"
-                     data-parent="@(node.ParentSamAccountName?.ToLowerInvariant() ?? "")"
-                     data-depth="@node.Depth"
-                     data-search="@searchable">
-                @if (node.HasChildren)
-                {
-                    <button type="button" class="org-toggle" aria-label="@T("org.expand") @node.DisplayName" aria-expanded="false">+</button>
-                }
-                else
-                {
-                    <span class="org-toggle-placeholder"></span>
-                }
-
+            var searchable = string.Join(" ", new[] { node.DisplayName,node.SamAccountName,node.Title,node.Department,node.Company,node.Office,node.Mail,node.EmployeeType }).ToLowerInvariant();
+            <article class="org-node @(node.Depth == 0 ? "" : "org-hidden")" style="--depth:@node.Depth" data-sam="@node.SamAccountName.ToLowerInvariant()" data-parent="@(node.ParentSamAccountName?.ToLowerInvariant() ?? "")" data-depth="@node.Depth" data-search="@searchable">
+                @if (node.HasChildren) { <button type="button" class="org-toggle" aria-label="@T("org.expand") @node.DisplayName" aria-expanded="false">+</button> } else { <span class="org-toggle-placeholder"></span> }
                 <div>
                     <div class="org-name">@node.DisplayName</div>
-                    <div class="org-meta">
-                        @if (!string.IsNullOrWhiteSpace(node.Title))
-                        {
-                            <span>@node.Title</span>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(node.Department))
-                        {
-                            <span> &middot; @node.Department</span>
-                        }
-                        @if (!string.IsNullOrWhiteSpace(node.Office))
-                        {
-                            <span> &middot; @node.Office</span>
-                        }
-                    </div>
-                    <div class="org-meta">
-                        @if (!string.IsNullOrWhiteSpace(node.Mail))
-                        {
-                            <span>@node.Mail</span>
-                        }
-                        else
-                        {
-                            <span>@node.SamAccountName</span>
-                        }
-                    </div>
+                    <div class="org-meta">@node.Title@if (!string.IsNullOrWhiteSpace(node.Department)) { <span> · @node.Department</span> }@if (!string.IsNullOrWhiteSpace(node.Office)) { <span> · @node.Office</span> }</div>
+                    <div class="org-meta">@(string.IsNullOrWhiteSpace(node.Mail) ? node.SamAccountName : node.Mail)</div>
                 </div>
-
                 <div class="org-actions">
-                    @if (node.HasChildren)
-                    {
-                        <span class="badge text-bg-light org-count">
-                            @node.DirectReports @T("org.direct") / @node.TotalReports @T("org.total")
-                        </span>
-                    }
-                    <a class="btn btn-sm btn-outline-primary"
-                       asp-page="/Requests/UpdateUser"
-                       asp-route-user="@node.ObjectGuid">@T("common.open")</a>
+                    @if (node.HasChildren) { <span class="badge text-bg-light org-count">@node.DirectReports @T("org.direct") / @node.TotalReports @T("org.total")</span> }
+                    <a class="btn btn-sm btn-outline-primary" asp-page="/Requests/UpdateUser" asp-route-user="@node.ObjectGuid">@T("common.open")</a>
                 </div>
             </article>
         }

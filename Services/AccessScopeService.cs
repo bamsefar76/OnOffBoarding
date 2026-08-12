@@ -153,12 +153,19 @@ WHERE ad.SamAccountName = @SamAccountName
 SELECT CASE WHEN EXISTS
 (
     SELECT 1
-    FROM dbo.Projects
-    WHERE Active = 1
+    FROM dbo.Projects p
+    WHERE p.Active = 1
       AND
       (
-           ProductionManager = @SamAccountName
-        OR ProductionManager LIKE @DomainSlashSamAccountName
+          EXISTS
+          (
+              SELECT 1
+              FROM dbo.ProjectManagers pm
+              WHERE pm.ProjectId = p.Id
+                AND pm.SamAccountName = @SamAccountName
+          )
+          OR p.ProductionManager = @SamAccountName
+          OR p.ProductionManager LIKE @DomainSlashSamAccountName
       )
 ) THEN 1 ELSE 0 END;";
         command.Parameters.AddNVarChar("@SamAccountName", samAccountName, 256);

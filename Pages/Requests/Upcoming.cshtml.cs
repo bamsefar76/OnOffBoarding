@@ -83,7 +83,14 @@ WHERE q.Status IN (N'Pending', N'Approved', N'Processing')
              AND p.ProjectName = q.Department
              AND
              (
-                  p.ProductionManager = @SamAccountName
+                  EXISTS
+                  (
+                      SELECT 1
+                      FROM dbo.ProjectManagers pm
+                      WHERE pm.ProjectId = p.Id
+                        AND pm.SamAccountName = @SamAccountName
+                  )
+               OR p.ProductionManager = @SamAccountName
                OR p.ProductionManager LIKE @DomainSlashSamAccountName
              )
        ))
@@ -122,7 +129,14 @@ WHERE q.Status IN (N'Pending', N'Approved', N'Processing')
              AND p.ProjectName = q.Department
              AND
              (
-                  p.ProductionManager = @SamAccountName
+                  EXISTS
+                  (
+                      SELECT 1
+                      FROM dbo.ProjectManagers pm
+                      WHERE pm.ProjectId = p.Id
+                        AND pm.SamAccountName = @SamAccountName
+                  )
+               OR p.ProductionManager = @SamAccountName
                OR p.ProductionManager LIKE @DomainSlashSamAccountName
              )
        ))
@@ -198,7 +212,14 @@ WHERE q.Status IN (N'Pending', N'Approved', N'Processing')
              AND p.ProjectName = q.Department
              AND
              (
-                  p.ProductionManager = @SamAccountName
+                  EXISTS
+                  (
+                      SELECT 1
+                      FROM dbo.ProjectManagers pm
+                      WHERE pm.ProjectId = p.Id
+                        AND pm.SamAccountName = @SamAccountName
+                  )
+               OR p.ProductionManager = @SamAccountName
                OR p.ProductionManager LIKE @DomainSlashSamAccountName
              )
        ))

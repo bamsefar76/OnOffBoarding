@@ -2,6 +2,7 @@
 @model UpdateUserModel
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
+@inject AccessScopeService AccessScopeService
 
 @{
     var textFallbacks = new Dictionary<string, string>
@@ -66,10 +67,12 @@
         ["update.sectionIt"] = "IT and contact",
         ["update.savePendingUpdateRequest"] = "Save pending update request",
         ["update.submitUpdateRequest"] = "Submit update request",
-        ["update.currentAdValues"] = "Current AD values / restricted fields"
+        ["update.currentAdValues"] = "Current AD values / restricted fields",
+        ["update.endDateOptionalHelp"] = "End date is optional unless the selected employee type requires it."
     };
 
     var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
+    var automaticGroupsOpen = (await AccessScopeService.GetCurrentAsync(User, HttpContext.RequestAborted)).IsIT;
     ViewData["Title"] = uiText.T("update.title", textFallbacks["update.title"]);
 
     string T(string key)
@@ -176,6 +179,7 @@
                            value='@Model.ExecuteAfter.ToString("dd.MM.yyyy")'
                            placeholder="dd.MM.yyyy"
                            style="width:140px;" />
+                    <div><small>@T("update.endDateOptionalHelp")</small></div>
                 </div>
 
                 <div id="endDateContainer">
@@ -348,7 +352,9 @@
                 @T("field.enabled")
             </label><br /><br />
 
-            <h3>@T("usercreate.automaticGroups")</h3>
+            <details class="mb-3" data-auto-open="@(automaticGroupsOpen ? "true" : "false")">
+                <summary class="fw-semibold mb-2">@T("usercreate.automaticGroups")</summary>
+                <div class="pt-2">
             @if (Model.RecommendedGroups.Any())
             {
                 <table class="table" style="width:100%; max-width:900px;">
@@ -389,6 +395,8 @@
             <button type="submit" asp-page-handler="PreviewGroups">
                 @T("usercreate.previewAutomaticGroups")
             </button>
+                </div>
+            </details>
             <button type="submit" asp-page-handler="SubmitUpdate">
                 @(Model.RequestId.HasValue ? T("update.savePendingUpdateRequest") : T("update.submitUpdateRequest"))
             </button>
@@ -686,7 +694,9 @@
             selectedOption &&
             selectedOption.getAttribute("data-requires-enddate") === "true";
 
-        endDateContainer.style.display = requiresEndDate ? "block" : "none";
+        endDateContainer.style.display = "block";
+        const endDateInput = document.getElementById("accountExpirationDate");
+        if (endDateInput) endDateInput.required = requiresEndDate;
     }
 
     document.addEventListener("DOMContentLoaded", function () {

@@ -16,7 +16,8 @@
         ["projectedit.projectName"] = "Project name",
         ["projectedit.projectNumber"] = "Project number",
         ["projectedit.selectCompany"] = "Select company",
-        ["projectedit.productionManager"] = "Production manager",
+        ["projectedit.projectManagers"] = "Project leaders",
+        ["projectedit.projectManagersHelp"] = "Select one or more project leaders.",
         ["projectedit.producer"] = "Producer",
         ["projectedit.executive"] = "Executive",
         ["projectedit.projectNameRequired"] = "Project name is required."
@@ -24,16 +25,6 @@
 
     var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
     string T(string key) => uiText.T(key, textFallbacks[key]);
-
-    string LocalizeMessage(string? message)
-    {
-        if (string.Equals(message, textFallbacks["projectedit.projectNameRequired"], StringComparison.Ordinal))
-        {
-            return T("projectedit.projectNameRequired");
-        }
-
-        return message ?? string.Empty;
-    }
 
     ViewData["Title"] = Model.Project.Id == 0 ? T("projectedit.titleAdd") : T("projectedit.titleEdit");
 }
@@ -44,9 +35,9 @@
     <a asp-page="/Projects/Index">@T("projectedit.backToProjects")</a>
 </p>
 
-@if (!string.IsNullOrWhiteSpace(Model.Message))
+@if (!string.IsNullOrWhiteSpace(Model.MessageKey))
 {
-    <p><strong>@LocalizeMessage(Model.Message)</strong></p>
+    <p><strong>@T(Model.MessageKey!)</strong></p>
 }
 
 <form method="post">
@@ -71,12 +62,11 @@
 
     <br /><br />
 
-    <label>@T("projectedit.productionManager")</label><br />
-    <select asp-for="Project.ProductionManager" asp-items="Model.CompanyUsers">
-        <option value="">@T("common.none")</option>
-    </select>
+    <label>@T("projectedit.projectManagers")</label><br />
+    <select asp-for="SelectedProjectManagers" asp-items="Model.CompanyUsers" multiple size="8" style="width:350px;"></select>
+    <div><small>@T("projectedit.projectManagersHelp")</small></div>
 
-    <br /><br />
+    <br />
 
     <label>@T("projectedit.producer")</label><br />
     <select asp-for="Project.Producer" asp-items="Model.CompanyUsers">

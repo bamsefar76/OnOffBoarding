@@ -15,7 +15,7 @@
         ["common.inactive"] = "Inactive",
         ["common.notSet"] = "Not set",
         ["licenseProducts.title"] = "License products",
-        ["licenseProducts.help"] = "Maintain the licenses users can request. Products in the same product family are mutually exclusive.",
+        ["licenseProducts.help"] = "Maintain the licenses users can request, their availability and family rules.",
         ["licenseProducts.newLicense"] = "New license",
         ["licenseProducts.searchPlaceholder"] = "Name, description or product family",
         ["licenseProducts.showInactive"] = "Show inactive",
@@ -37,7 +37,15 @@
         ["licenseCapacity.inUse"] = "{0} in use",
         ["licenseCapacity.inUseOf"] = "{0} of {1} in use",
         ["licenseProducts.available"] = "Available for request",
-        ["licenseProducts.familyHelp"] = "Licenses with the same non-empty product family cannot be requested together.",
+        ["licenseProducts.familyHelp"] = "Family rules can limit how many individual products may be selected before a replacement license must be used.",
+        ["licenseProducts.scopeTitle"] = "Availability by label/domain",
+        ["licenseProducts.scopeHelp"] = "No selections means the license is available to all labels/domains.",
+        ["licenseProducts.scopeDomain"] = "Domain",
+        ["licenseProducts.scopeLabel"] = "Label",
+        ["licenseProducts.familyRuleTitle"] = "Family selection rule",
+        ["licenseProducts.familyMax"] = "Maximum products from family",
+        ["licenseProducts.familyReplacement"] = "Replacement license",
+        ["licenseProducts.familyRuleHelp"] = "Example: Adobe = maximum 3 individual apps, then select Adobe All Apps.",
         ["licenseProducts.editLicense"] = "Edit license",
         ["licenseProducts.noProducts"] = "No license products matched the current filters.",
         ["licenseProducts.disable"] = "Disable",
@@ -55,7 +63,10 @@
         ["licenseProducts.validation.fulfillmentInvalid"] = "Select a valid fulfillment workflow.",
         ["licenseProducts.validation.adGroupRequired"] = "AD group is required for automatic fulfillment.",
         ["licenseProducts.validation.adGroupTooLong"] = "AD group cannot be longer than 300 characters.",
-        ["licenseProducts.validation.licenseCountNegative"] = "License count cannot be negative."
+        ["licenseProducts.validation.licenseCountNegative"] = "License count cannot be negative.",
+        ["licenseProducts.validation.familyRequiredForRule"] = "Product family is required when a family selection rule is configured.",
+        ["licenseProducts.validation.familyRuleIncomplete"] = "Enter both a maximum number of products and a replacement license for the family rule.",
+        ["licenseProducts.validation.familyReplacementSelf"] = "The replacement license must be a different license product."
     };
 
     var uiText = await UiTextService.GetTextsAsync(HttpContext, textFallbacks);
@@ -86,6 +97,9 @@
         "licenseProducts.validation.adGroupRequired" => T("licenseProducts.validation.adGroupRequired"),
         "licenseProducts.validation.adGroupTooLong" => T("licenseProducts.validation.adGroupTooLong"),
         "licenseProducts.validation.licenseCountNegative" => T("licenseProducts.validation.licenseCountNegative"),
+        "licenseProducts.validation.familyRequiredForRule" => T("licenseProducts.validation.familyRequiredForRule"),
+        "licenseProducts.validation.familyRuleIncomplete" => T("licenseProducts.validation.familyRuleIncomplete"),
+        "licenseProducts.validation.familyReplacementSelf" => T("licenseProducts.validation.familyReplacementSelf"),
         _ => ""
     };
 }
@@ -267,6 +281,44 @@
                         <label asp-for="Edit.AdGroupName" class="form-label">@T("licenseProducts.adGroupName")</label>
                         <input asp-for="Edit.AdGroupName" class="form-control" maxlength="300" autocomplete="off" />
                         <div class="form-text">@T("licenseProducts.adGroupHelp")</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">@T("licenseProducts.scopeTitle")</label>
+                        <div class="border rounded p-2" style="max-height:220px; overflow:auto;">
+                            @foreach (var scope in Model.ScopeOptions)
+                            {
+                                var isChecked = Model.SelectedScopes.Contains(scope.Value, StringComparer.OrdinalIgnoreCase);
+                                <label class="form-check mb-1">
+                                    <input class="form-check-input" type="checkbox" name="SelectedScopes" value="@scope.Value" checked="@isChecked" />
+                                    <span class="form-check-label">@(scope.ScopeType == "Domain" ? T("licenseProducts.scopeDomain") : T("licenseProducts.scopeLabel")): @scope.DisplayText</span>
+                                </label>
+                            }
+                        </div>
+                        <div class="form-text">@T("licenseProducts.scopeHelp")</div>
+                    </div>
+
+                    <div class="card mb-3">
+                        <div class="card-header fw-semibold">@T("licenseProducts.familyRuleTitle")</div>
+                        <div class="card-body">
+                            <div class="row g-2">
+                                <div class="col-sm-5">
+                                    <label asp-for="FamilyMaxSelectable" class="form-label">@T("licenseProducts.familyMax")</label>
+                                    <input asp-for="FamilyMaxSelectable" class="form-control" type="number" min="1" />
+                                </div>
+                                <div class="col-sm-7">
+                                    <label asp-for="FamilyReplacementLicenseProductId" class="form-label">@T("licenseProducts.familyReplacement")</label>
+                                    <select asp-for="FamilyReplacementLicenseProductId" class="form-select">
+                                        <option value="">@T("common.notSet")</option>
+                                        @foreach (var replacement in Model.ReplacementProducts)
+                                        {
+                                            <option value="@replacement.Id">@replacement.Name</option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-text mt-2">@T("licenseProducts.familyRuleHelp")</div>
+                        </div>
                     </div>
 
                     <div class="row g-3">

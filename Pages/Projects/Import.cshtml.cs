@@ -199,6 +199,19 @@ SELECT @ProjectId;";
                 projectId = Convert.ToInt32(await save.ExecuteScalarAsync(), CultureInfo.InvariantCulture);
             }
 
+            var importedManager = AccessScopeService.ExtractSamAccountName((ProductionManager ?? string.Empty).Trim());
+            if (!string.IsNullOrWhiteSpace(importedManager))
+            {
+                await using var manager = cn.CreateCommand();
+                manager.Transaction = tx;
+                manager.CommandText = @"
+IF NOT EXISTS (SELECT 1 FROM dbo.ProjectManagers WHERE ProjectId=@ProjectId AND SamAccountName=@Sam)
+    INSERT INTO dbo.ProjectManagers(ProjectId, SamAccountName, SortOrder) VALUES(@ProjectId, @Sam, 100);";
+                manager.Parameters.AddInt("@ProjectId", projectId);
+                manager.Parameters.AddNVarChar("@Sam", importedManager, 256);
+                await manager.ExecuteNonQueryAsync();
+            }
+
             await using (var review = cn.CreateCommand())
             {
                 review.Transaction = tx;

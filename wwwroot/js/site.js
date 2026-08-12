@@ -267,6 +267,10 @@
     }
 
     function startSortableTables() {
+        document.querySelectorAll('details[data-auto-open="true"]').forEach(details => {
+            details.open = true;
+        });
+
         initialiseSortableTables();
 
         const observer = new MutationObserver(mutations => {

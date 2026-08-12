@@ -80,6 +80,9 @@ public sealed class CreateModel : PageModel
     public List<AssignmentLicenseOption> LicenseProducts { get; } = new();
     public string? LicenseValidationMessageKey { get; private set; }
     public string? LicenseValidationMessageArgument { get; private set; }
+    public int? LicenseValidationSelectedCount { get; private set; }
+    public int? LicenseValidationMaxCount { get; private set; }
+    public string? LicenseValidationReplacement { get; private set; }
 
     public async Task OnGetAsync()
     {
@@ -275,14 +278,15 @@ ORDER BY {column};";
         }
         else
         {
-            var duplicateFamily = selectedLicenses
-                .Where(product => !string.IsNullOrWhiteSpace(product.ProductFamily))
-                .GroupBy(product => product.ProductFamily!, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault(group => group.Count() > 1);
-            if (duplicateFamily is not null)
+            await using var familyCn = await _connectionFactory.OpenAsync(HttpContext.RequestAborted);
+            var familyViolation = await FindFamilyViolationAsync(familyCn, selectedLicenses);
+            if (familyViolation is not null)
             {
-                LicenseValidationMessageKey = "assignments.licenseValidationDuplicateFamily";
-                LicenseValidationMessageArgument = duplicateFamily.Key;
+                LicenseValidationMessageKey = "assignments.licenseValidationFamilyLimit";
+                LicenseValidationMessageArgument = familyViolation.ProductFamily;
+                LicenseValidationSelectedCount = familyViolation.SelectedCount;
+                LicenseValidationMaxCount = familyViolation.MaxSelectable;
+                LicenseValidationReplacement = familyViolation.ReplacementName;
                 licenseValidationFailed = true;
             }
         }
@@ -323,6 +327,11 @@ ORDER BY {column};";
         await using var cn = await _connectionFactory.OpenAsync(HttpContext.RequestAborted);
         var domain = await ReadDomainAsync(cn, SelectedDomain);
         if (domain is null) ModelState.AddModelError(nameof(SelectedDomain), "Select a valid label.");
+        else if (selectedLicenses.Any(license => !IsLicenseAvailableForDomain(license, domain)))
+        {
+            LicenseValidationMessageKey = "assignments.licenseValidationUnavailable";
+            licenseValidationFailed = true;
+        }
 
         var project = domain is null || !ProjectId.HasValue
             ? null
@@ -616,6 +625,8 @@ SELECT
     ISNULL(FulfillmentType, N'Manual'),
     ISNULL(AdGroupName, N''),
     LicenseCount,
+    ISNULL((SELECT STRING_AGG(scope.ScopeValue,N';') FROM dbo.LicenseProductScopes scope WHERE scope.LicenseProductId=dbo.LicenseProducts.LicenseProductId AND scope.ScopeType=N'Domain'),N'') AS AllowedDomains,
+    ISNULL((SELECT STRING_AGG(scope.ScopeValue,N';') FROM dbo.LicenseProductScopes scope WHERE scope.LicenseProductId=dbo.LicenseProducts.LicenseProductId AND scope.ScopeType=N'Label'),N'') AS AllowedLabels,
     (
         SELECT COUNT(*)
         FROM dbo.LicenseAssignments AS assignment
@@ -666,11 +677,32 @@ ORDER BY SortOrder, COALESCE(NULLIF(ProductFamily, N''), Name), LicenseLevel, Na
                 reader.GetString(5),
                 reader.GetString(6),
                 reader.IsDBNull(7) ? null : reader.GetInt32(7),
-                reader.GetInt32(8)));
+                reader.GetString(8),
+                reader.GetString(9),
+                reader.GetInt32(10)));
 
         await reader.DisposeAsync();
         TitleOfficeLicenseRules = await _officeLicenseRuleService.LoadActiveTitleRulesAsync(cn);
     }
+
+    private async Task<FamilyViolation?> FindFamilyViolationAsync(SqlConnection cn, IReadOnlyCollection<AssignmentLicenseOption> selected)
+    {
+        foreach (var family in selected.Where(x=>!string.IsNullOrWhiteSpace(x.ProductFamily)).GroupBy(x=>x.ProductFamily,StringComparer.OrdinalIgnoreCase))
+        {
+            await using var cmd=cn.CreateCommand();
+            cmd.Parameters.AddNVarChar("@Family",family.Key,100);
+            cmd.CommandText=@"SELECT r.MaxSelectable,p.Name FROM dbo.LicenseFamilyRules r JOIN dbo.LicenseProducts p ON p.LicenseProductId=r.ReplacementLicenseProductId WHERE r.ProductFamily=@Family;";
+            await using var reader=await cmd.ExecuteReaderAsync(HttpContext.RequestAborted);
+            if(await reader.ReadAsync(HttpContext.RequestAborted))
+            {
+                var max=reader.GetInt32(0);
+                if(family.Count()>max) return new FamilyViolation(family.Key,family.Count(),max,reader.GetString(1));
+            }
+        }
+        return null;
+    }
+
+    private sealed record FamilyViolation(string ProductFamily,int SelectedCount,int MaxSelectable,string ReplacementName);
 
     private async Task LoadAccessCardGroupsAsync()
     {
@@ -882,6 +914,15 @@ while (await r.ReadAsync())
         LicenseBusinessReason = NullIfWhiteSpace(LicenseBusinessReason);
     }
 
+    private static bool IsLicenseAvailableForDomain(AssignmentLicenseOption license, DomainOption domain)
+    {
+        var domains = (license.AllowedDomains ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var labels = (license.AllowedLabels ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (domains.Length == 0 && labels.Length == 0) return true;
+        return domains.Any(x => x.Equals(domain.Domain, StringComparison.OrdinalIgnoreCase))
+            || labels.Any(x => x.Equals(domain.Label, StringComparison.OrdinalIgnoreCase));
+    }
+
     private static bool TryParseDate(string? value, bool required, out DateTime? result)
     {
         result = null;
@@ -911,6 +952,8 @@ while (await r.ReadAsync())
         string FulfillmentType,
         string AdGroupName,
         int? LicenseCount,
+        string AllowedDomains,
+        string AllowedLabels,
         int CurrentInUse);
     private sealed record EmployeeDetails(string GivenName, string Surname, string? PrivateEmail, string? MobilePhone, string? UserPrincipalName, Guid? ObjectGuid, string? SamAccountName)
     {

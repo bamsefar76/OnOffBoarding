@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Data.SqlClient;
@@ -205,10 +205,20 @@ SELECT TOP 1
     ISNULL(Country, ''),
     ISNULL(Office, ''),
     ISNULL(ManagerSamAccountName, ''),
-    ISNULL(Enabled, 1)
-FROM dbo.ADObjects
-WHERE ObjectGUID = @ObjectGuid
-  AND IsDeleted = 0;";
+    ISNULL(Enabled, 1),
+    expiration.AccountExpirationDate
+FROM dbo.ADObjects a
+OUTER APPLY
+(
+    SELECT TOP 1 q.AccountExpirationDate
+    FROM dbo.ADUserChangeQueue q
+    WHERE q.TargetObjectGUID = a.ObjectGUID
+      AND q.RequestType IN ('CREATE', 'UPDATE')
+      AND ISNULL(q.Status, '') IN ('Implemented', 'Completed', 'Done')
+    ORDER BY q.RequestId DESC
+) expiration
+WHERE a.ObjectGUID = @ObjectGuid
+  AND a.IsDeleted = 0;";
 
         cmd.Parameters.AddUniqueIdentifier("@ObjectGuid", SelectedObjectGuid);
 
@@ -245,6 +255,7 @@ WHERE ObjectGUID = @ObjectGuid
         Office = reader.GetString(16);
         ManagerSamAccountName = reader.GetString(17);
         Enabled = reader.GetBoolean(18);
+        AccountExpirationDate = reader.IsDBNull(19) ? null : reader.GetDateTime(19).Date;
         Mail = CurrentMail;
         SelectedDomain = GetDomainFromAddress(NewUserPrincipalName) ?? GetDomainFromAddress(CurrentMail);
         await ApplyOfficeLicenseFromTitleAsync(requireRule: false);
@@ -461,6 +472,34 @@ OPTION (MAXRECURSION 32767);
             await ApplyOfficeLicenseFromTitleAsync(requireRule: false);
             await LoadGroupRecommendationsAsync(preferQueuedGroups: false);
             Message = validationMessage;
+            return Page();
+        }
+
+        var selectedEmployeeType = EmployeeTypes.FirstOrDefault(x =>
+            string.Equals(x.EmployeeType, EmployeeType, StringComparison.OrdinalIgnoreCase));
+        if (selectedEmployeeType?.RequiresEndDate == true && !AccountExpirationDate.HasValue)
+        {
+            var texts = await _uiTextService.GetTextsAsync(
+                HttpContext,
+                new Dictionary<string, string>
+                {
+                    ["update.validation.endDateRequired"] = "End date is required for this employee type."
+                });
+            Message = texts.T("update.validation.endDateRequired", "End date is required for this employee type.");
+
+            if (RequestId.HasValue)
+            {
+                if (!await _objectAccessService.CanAccessRequestAsync(User, RequestId.Value, "UPDATE")) return Forbid();
+                var requestTargetObjectGuid = await GetRequestTargetObjectGuidAsync(cn, RequestId.Value, "UPDATE");
+                if (requestTargetObjectGuid.HasValue)
+                    await LoadCurrentAdUserValuesAsync(cn, requestTargetObjectGuid.Value, initializeRequestedFields: false);
+            }
+            else if (SelectedObjectGuid != Guid.Empty)
+            {
+                if (!await _objectAccessService.CanViewUserAsync(User, SelectedObjectGuid)) return Forbid();
+                await LoadCurrentAdUserValuesAsync(cn, SelectedObjectGuid, initializeRequestedFields: false);
+            }
+            await LoadGroupRecommendationsAsync(preferQueuedGroups: false);
             return Page();
         }
 
@@ -873,10 +912,20 @@ SELECT TOP 1
     ISNULL(Country, ''),
     ISNULL(Office, ''),
     ISNULL(ManagerSamAccountName, ''),
-    ISNULL(Enabled, 1)
-FROM dbo.ADObjects
-WHERE ObjectGUID = @ObjectGuid
-  AND IsDeleted = 0;
+    ISNULL(Enabled, 1),
+    expiration.AccountExpirationDate
+FROM dbo.ADObjects a
+OUTER APPLY
+(
+    SELECT TOP 1 q.AccountExpirationDate
+    FROM dbo.ADUserChangeQueue q
+    WHERE q.TargetObjectGUID = a.ObjectGUID
+      AND q.RequestType IN ('CREATE', 'UPDATE')
+      AND ISNULL(q.Status, '') IN ('Implemented', 'Completed', 'Done')
+    ORDER BY q.RequestId DESC
+) expiration
+WHERE a.ObjectGUID = @ObjectGuid
+  AND a.IsDeleted = 0;
 ";
 
     cmd.Parameters.AddUniqueIdentifier("@ObjectGuid", objectGuid);
@@ -917,6 +966,7 @@ WHERE ObjectGUID = @ObjectGuid
         Office = reader.GetString(16);
         ManagerSamAccountName = reader.GetString(17);
         Enabled = reader.GetBoolean(18);
+        AccountExpirationDate = reader.IsDBNull(19) ? null : reader.GetDateTime(19).Date;
         Mail = CurrentMail;
         SelectedDomain = GetDomainFromAddress(NewUserPrincipalName) ?? GetDomainFromAddress(CurrentMail);
     }

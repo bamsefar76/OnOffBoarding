@@ -1,4 +1,4 @@
-﻿@page
+@page
 @model ProjectsModel
 @using UserChangeQueueWeb.Services
 @inject UiTextService UiTextService
@@ -17,7 +17,7 @@
         ["projects.showDisabled"] = "Show disabled projects",
         ["projects.projectNumber"] = "Project number",
         ["projects.projectName"] = "Project name",
-        ["projects.productionManager"] = "Production manager",
+        ["projects.projectManagers"] = "Project leaders",
         ["projects.producer"] = "Producer",
         ["projects.executive"] = "Executive",
         ["projects.lastUpdated"] = "Last updated"
@@ -53,7 +53,7 @@
             <th>@T("projects.projectNumber")</th>
             <th>@T("projects.projectName")</th>
             <th>@T("field.company")</th>
-            <th>@T("projects.productionManager")</th>
+            <th>@T("projects.projectManagers")</th>
             <th>@T("projects.producer")</th>
             <th>@T("projects.executive")</th>
             <th>@T("field.enabled")</th>
@@ -69,11 +69,11 @@
             <td>@project.ProjectNumber</td>
             <td>@project.ProjectName</td>
             <td>@project.Company</td>
-            <td>@project.ProductionManager</td>
+            <td>@project.ProjectManagers</td>
             <td>@project.Producer</td>
             <td>@project.Executive</td>
             <td>@(project.Active ? T("common.yes") : T("common.no"))</td>
-            <td>@(project.LastUpdated?.ToString("g"))</td>
+            <td>@(project.LastUpdated?.ToString("dd.MM.yyyy HH:mm"))</td>
             <td>
                 @if (Model.CanEditProjects)
                 {
